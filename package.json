@@ -1,0 +1,26 @@
+{
+  "name": "stream-chat-overlay",
+  "version": "1.0.0",
+  "description": "Always-on-top adjustable Twitch & YouTube live chat overlay",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/verify.js"
+  },
+  "keywords": [
+    "twitch",
+    "youtube",
+    "chat",
+    "overlay",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0"
+  }
+}
+

@@ -1,0 +1,91 @@
+# ============================================================================
+# Stream Chat Overlay — Security & Privacy .gitignore
+# Prevents leaking API keys, OAuth tokens, personal file paths, & session data
+# ============================================================================
+
+# 1. Node.js & Electron Dependencies
+node_modules/
+jspm_packages/
+.npm/
+.pnp.*
+
+# 2. Environment Variables, API Keys, OAuth Tokens & Certificates
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+*secret*
+*token*
+*credentials*
+*apikey*
+*api-key*
+*oauth*
+
+# 3. User Settings, Config Files & Chromium/Electron Session Storage
+overlay-settings.json
+overlay-settings*.json
+settings.json
+config.json
+local-config.json
+user-data/
+userData/
+Partitions/
+Cookies
+Cookies-journal
+Local Storage/
+Session Storage/
+IndexedDB/
+GPUCache/
+Code Cache/
+DawnCache/
+blob_storage/
+Network Persistent State
+Preferences
+
+# 4. Compiled Executables, Local Launchers & Build Artifacts
+dist/
+build/
+out/
+release/
+*.exe
+*.dll
+*.pdb
+*.vbs
+*.lnk
+*.msi
+*.appx
+
+# 5. Personal Custom Alert Media (Audio / Video / Images dropped into repo)
+custom-alerts/
+*.mp3
+*.wav
+*.ogg
+*.m4a
+*.flac
+*.aac
+*.mp4
+*.webm
+
+# 6. Logs, Crash Dumps & OS / IDE Files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+Crashpad/
+*.dmp
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+

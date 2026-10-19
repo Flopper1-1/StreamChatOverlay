@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http://127.0.0.1:*; media-src 'self' data: https: http://127.0.0.1:*; connect-src 'self' http://127.0.0.1:*;"
+  />
+  <title>Stream Chat Overlay</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- 8-direction custom resize handles so transparent window is always smoothly resizable from any edge/corner -->
+  <div class="resize-handle resize-n" data-resize="n"></div>
+  <div class="resize-handle resize-s" data-resize="s"></div>
+  <div class="resize-handle resize-e" data-resize="e"></div>
+  <div class="resize-handle resize-w" data-resize="w"></div>
+  <div class="resize-handle resize-nw" data-resize="nw"></div>
+  <div class="resize-handle resize-ne" data-resize="ne"></div>
+  <div class="resize-handle resize-sw" data-resize="sw"></div>
+  <div class="resize-handle resize-se" data-resize="se" title="Drag to resize window"></div>
+
+  <div id="appRoot" class="app-root">
+    <!-- Hover restore strip shown only when top bar is hidden -->
+    <div id="topRestoreBar" class="top-restore-bar hidden">
+      <button id="btnRestoreTopBar" class="restore-pill" title="Show Top Bar">
+        <span>Show Top Bar</span>
+        <kbd id="restoreHotkeyLabel">Alt+H</kbd>
+      </button>
+    </div>
+
+    <!-- Top Header Bar (hidable via hotkey or button) -->
+    <header id="topBar" class="top-bar">
+      <div class="top-bar-drag">
+        <div class="brand-group" title="Drag to move overlay window (Always on Top)">
+          <span class="drag-dots">⋮⋮</span>
+          <span class="pin-badge" title="Always overlaid over everything">TOP</span>
+        </div>
+
+        <!-- Platform Status Pills with Separate Icons (Twitch, YouTube, Kick) -->
+        <div class="status-pills">
+          <button id="pillTwitch" class="platform-pill twitch-pill" title="Click to configure Twitch pairing">
+            <span class="platform-svg twitch-svg" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                <path d="M4.265 3 2 6.236v13.223h4.502V22h2.531l2.53-2.541h3.658L22 12.696V3H4.265zm15.469 8.852-3.094 3.106h-4.5l-2.531 2.54v-2.54H5.656V5.118h14.078v6.734zM15.813 7.94h2.25v4.518h-2.25V7.94zm-5.063 0h2.25v4.518H10.75V7.94z"/>
+              </svg>
+            </span>
+            <span id="pillTwitchText" class="pill-text">Twitch</span>
+            <span id="pillTwitchDot" class="status-dot disconnected"></span>
+          </button>
+
+          <button id="pillYouTube" class="platform-pill youtube-pill" title="Click to configure YouTube pairing">
+            <span class="platform-svg youtube-svg" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+            </span>
+            <span id="pillYouTubeText" class="pill-text">YouTube</span>
+            <span id="pillYouTubeDot" class="status-dot disconnected"></span>
+          </button>
+
+          <button id="pillKick" class="platform-pill kick-pill" title="Click to configure Kick pairing">
+            <span class="platform-svg kick-svg" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                <path d="M3 3h5.4v6.6L14.8 3H21l-7.2 8.4L21 21h-6.2l-6.4-6.9V21H3V3z"/>
+              </svg>
+            </span>
+            <span id="pillKickText" class="pill-text">Kick</span>
+            <span id="pillKickDot" class="status-dot disconnected"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Top Bar Action Controls -->
+      <div class="top-bar-actions">
+        <button id="btnTtsToggle" class="icon-btn tts-top-btn" title="Toggle Chat TTS (Alt+T)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+        </button>
+
+        <button id="btnTestMsg" class="icon-btn" title="Send Test Twitch, YouTube & Kick Messages">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </button>
+
+        <button id="btnHideTop" class="hide-top-pill-btn" title="Hide Top Bar (Hotkey: Alt+H or F8)">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polyline points="18 15 12 9 6 15"></polyline>
+            <line x1="4" y1="5" x2="20" y2="5"></line>
+          </svg>
+          <span>Hide Top</span>
+        </button>
+
+        <button id="btnSettings" class="icon-btn" title="Settings, Pairing & OBS Alerts">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+
+        <button id="btnMinimize" class="icon-btn" title="Minimize">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+
+        <button id="btnClose" class="icon-btn close-btn" title="Quit Overlay">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Toast Notification Banner -->
+    <div id="toastBanner" class="toast-banner hidden"></div>
+
+    <!-- In-Overlay Follower Alert Popup Card -->
+    <div id="followAlertBanner" class="follow-alert-banner hidden">
+      <div id="followAlertMedia" class="follow-alert-media"></div>
+      <div class="follow-alert-info">
+        <span id="followAlertPlatformTag" class="follow-alert-tag">NEW FOLLOWER</span>
+        <div id="followAlertUser" class="follow-alert-user">Username</div>
+        <div id="followAlertSub" class="follow-alert-sub">just followed!</div>
+      </div>
+    </div>
+
+    <!-- Main Chat Feed -->
+    <main id="chatViewport" class="chat-viewport">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icons">
+          <span class="badge-preview twitch-badge-preview" title="Twitch">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+              <path d="M4.265 3 2 6.236v13.223h4.502V22h2.531l2.53-2.541h3.658L22 12.696V3H4.265zm15.469 8.852-3.094 3.106h-4.5l-2.531 2.54v-2.54H5.656V5.118h14.078v6.734zM15.813 7.94h2.25v4.518h-2.25V7.94zm-5.063 0h2.25v4.518H10.75V7.94z"/>
+            </svg>
+          </span>
+          <span class="plus-sep">+</span>
+          <span class="badge-preview youtube-badge-preview" title="YouTube">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+            </svg>
+          </span>
+          <span class="plus-sep">+</span>
+          <span class="badge-preview kick-badge-preview" title="Kick">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M3 3h5.4v6.6L14.8 3H21l-7.2 8.4L21 21h-6.2l-6.4-6.9V21H3V3z"/>
+            </svg>
+          </span>
+        </div>
+        <h3>Stream Chat Overlay Ready</h3>
+        <p>100% transparent background. Pair Twitch, YouTube &amp; Kick or configure OBS Follower Alerts.</p>
+        <div class="empty-actions">
+          <button id="btnEmptyOpenSettings" class="primary-btn">Pair Channels</button>
+          <button id="btnEmptyTestChat" class="secondary-btn">Sample Chat</button>
+          <button id="btnEmptyTestFollow" class="secondary-btn">🎉 Test Follow Alert</button>
+          <button id="btnEmptyHideTop" class="secondary-btn">Hide Top Bar</button>
+        </div>
+        <div class="hotkey-hint">
+          Hide Top: <kbd id="emptyHotkeyHint">Alt+H</kbd> &bull; Toggle TTS: <kbd id="emptyTtsHotkeyHint">Alt+T</kbd>
+        </div>
+      </div>
+
+      <div id="chatList" class="chat-list"></div>
+
+      <button id="btnScrollBottom" class="scroll-bottom-btn hidden">
+        &#8595; New messages below
+      </button>
+    </main>
+
+    <!-- Settings Modal Drawer -->
+    <section id="settingsModal" class="settings-modal hidden">
+      <div class="settings-header">
+        <div class="settings-tabs">
+          <button class="tab-btn active" data-tab="tabConnect">Channels</button>
+          <button class="tab-btn" data-tab="tabAlerts">Follow Alerts &amp; OBS</button>
+          <button class="tab-btn" data-tab="tabAppearance">Appearance</button>
+          <button class="tab-btn" data-tab="tabHotkeys">TTS &amp; Hotkeys</button>
+        </div>
+        <button id="btnCloseSettings" class="icon-btn" title="Close Settings">✕</button>
+      </div>
+
+      <div class="settings-body">
+        <!-- TAB 1: PAIR & CONNECT -->
+        <div id="tabConnect" class="tab-pane active">
+          <!-- Twitch Pairing Card -->
+          <div class="platform-card twitch-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon twitch-icon-box">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                    <path d="M4.265 3 2 6.236v13.223h4.502V22h2.531l2.53-2.541h3.658L22 12.696V3H4.265zm15.469 8.852-3.094 3.106h-4.5l-2.531 2.54v-2.54H5.656V5.118h14.078v6.734zM15.813 7.94h2.25v4.518h-2.25V7.94zm-5.063 0h2.25v4.518H10.75V7.94z"/>
+                  </svg>
+                </span>
+                <div>
+                  <h4>Twitch Chat</h4>
+                  <span id="twitchStatusText" class="status-subtext">Disconnected</span>
+                </div>
+              </div>
+              <button id="btnPairTwitchBrowser" class="ghost-btn" title="Open Twitch in browser window to pick or sign in to your channel">
+                Pair via Browser
+              </button>
+            </div>
+
+            <div class="input-row">
+              <input
+                id="inputTwitchChannel"
+                type="text"
+                placeholder="Twitch username or URL (e.g. shroud)"
+                autocomplete="off"
+              />
+              <button id="btnConnectTwitch" class="connect-btn twitch-connect-btn">Connect</button>
+              <button id="btnDisconnectTwitch" class="disconnect-btn" title="Disconnect Twitch">Stop</button>
+            </div>
+
+            <details class="advanced-details">
+              <summary>Optional: Twitch OAuth Token (Encrypted locally &bull; Hidden on stream)</summary>
+              <div class="advanced-grid">
+                <input id="inputTwitchOauthUser" type="text" placeholder="Your Twitch login username" autocomplete="off" spellcheck="false" />
+                <div class="input-row">
+                  <input id="inputTwitchOauthToken" type="password" placeholder="oauth:xxxxxxxxxxxxxx (encrypted with Windows DPAPI)" autocomplete="off" spellcheck="false" />
+                  <button id="btnClearTwitchToken" class="ghost-btn" title="Clear saved Twitch OAuth token">Clear</button>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- YouTube Pairing Card -->
+          <div class="platform-card youtube-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon youtube-icon-box">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                </span>
+                <div>
+                  <h4>YouTube Live Chat</h4>
+                  <span id="youtubeStatusText" class="status-subtext">Disconnected</span>
+                </div>
+              </div>
+              <button id="btnPairYouTubeBrowser" class="ghost-btn" title="Open YouTube in browser window to pick your @channel or live stream">
+                Pair via Browser
+              </button>
+            </div>
+
+            <div class="input-row">
+              <input
+                id="inputYouTubeChannel"
+                type="text"
+                placeholder="@ChannelHandle, Live URL, or Video ID"
+                autocomplete="off"
+              />
+              <button id="btnConnectYouTube" class="connect-btn youtube-connect-btn">Connect</button>
+              <button id="btnDisconnectYouTube" class="disconnect-btn" title="Disconnect YouTube">Stop</button>
+            </div>
+
+            <details class="advanced-details">
+              <summary>Optional: YouTube Data API v3 Key (Encrypted locally &bull; Not required)</summary>
+              <div class="input-row" style="margin-top: 8px;">
+                <input id="inputYouTubeApiKey" type="password" placeholder="AIzaSy... (leave blank for built-in InnerTube live reader)" autocomplete="off" spellcheck="false" />
+                <button id="btnClearYouTubeKey" class="ghost-btn" title="Clear saved YouTube API key">Clear</button>
+              </div>
+            </details>
+          </div>
+
+          <!-- Kick.com Pairing Card -->
+          <div class="platform-card kick-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon kick-icon-box">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path d="M3 3h5.4v6.6L14.8 3H21l-7.2 8.4L21 21h-6.2l-6.4-6.9V21H3V3z"/>
+                  </svg>
+                </span>
+                <div>
+                  <h4>Kick.com Chat</h4>
+                  <span id="kickStatusText" class="status-subtext">Disconnected</span>
+                </div>
+              </div>
+              <button id="btnPairKickBrowser" class="ghost-btn" title="Open Kick.com in browser window to pair your channel">
+                Pair via Browser
+              </button>
+            </div>
+
+            <div class="input-row">
+              <input
+                id="inputKickChannel"
+                type="text"
+                placeholder="Kick username or kick.com/channel"
+                autocomplete="off"
+              />
+              <button id="btnConnectKick" class="connect-btn kick-connect-btn">Connect</button>
+              <button id="btnDisconnectKick" class="disconnect-btn" title="Disconnect Kick">Stop</button>
+            </div>
+
+            <details class="advanced-details">
+              <summary>Optional: Kick Chatroom ID (auto-detected automatically)</summary>
+              <div class="advanced-grid single-col">
+                <input id="inputKickChatroomId" type="text" placeholder="Auto-detected numeric chatroom ID" />
+              </div>
+            </details>
+          </div>
+
+          <div class="settings-footer-actions">
+            <button id="btnModalTestChat" class="secondary-btn full-width">
+              ⚡ Send Sample Messages (Preview Twitch, YouTube &amp; Kick Icons)
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 2: FOLLOWER ALERTS & OBS -->
+        <div id="tabAlerts" class="tab-pane">
+          <div class="platform-card alert-card-settings">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon alert-icon-box">🎉</span>
+                <div>
+                  <h4>Twitch &amp; Kick Follower Alerts</h4>
+                  <span class="status-subtext">Reads out new followers &amp; shows popup in OBS</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-footer-actions split">
+              <button id="btnTestTwitchFollow" class="primary-btn">🎉 Test Twitch Follow</button>
+              <button id="btnTestKickFollow" class="connect-btn kick-connect-btn">🎉 Test Kick Follow</button>
+            </div>
+
+            <div class="toggle-grid">
+              <label class="checkbox-row">
+                <input id="chkFollowAlertsEnabled" type="checkbox" checked />
+                <span>Enable Follower Alerts (Master Toggle)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkTwitchFollowAlerts" type="checkbox" checked />
+                <span>Twitch Follower Alerts</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkKickFollowAlerts" type="checkbox" checked />
+                <span>Kick Follower Alerts</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkFollowAlertTts" type="checkbox" checked />
+                <span>🔊 Read Follower Alert Aloud with TTS (After MP3 finishes)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkFollowAlertObsOnly" type="checkbox" />
+                <span>📺 Only display on OBS Browser (Do NOT display on this overlay)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkFollowAlertShowInChat" type="checkbox" checked />
+                <span>Show &ldquo;NEW FOLLOW&rdquo; announcement in chat overlay feed</span>
+              </label>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputFollowAlertTemplate">Alert Message &amp; TTS Readout Template</label>
+              </div>
+              <input
+                id="inputFollowAlertTemplate"
+                type="text"
+                value="{user} just followed on {platform}!"
+                placeholder="{user} just followed on {platform}!"
+              />
+            </div>
+
+            <div class="advanced-grid">
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderFollowAlertVolume">Alert Sound &amp; TTS Volume</label>
+                  <span id="valFollowAlertVolume" class="setting-val">85%</span>
+                </div>
+                <input id="sliderFollowAlertVolume" type="range" min="0" max="100" step="5" value="85" />
+              </div>
+
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderFollowAlertDuration">Video / Alert Play Duration</label>
+                  <span id="valFollowAlertDuration" class="setting-val">6s</span>
+                </div>
+                <div class="duration-control-row">
+                  <input id="sliderFollowAlertDuration" type="range" min="1" max="60" step="1" value="6" />
+                  <input id="inputFollowAlertDurationSec" type="number" min="1" max="300" step="1" value="6" class="duration-num-input" title="Exact video/alert play duration in seconds" />
+                </div>
+              </div>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chkFollowAlertPlayFullVideo" type="checkbox" />
+              <span>Play full video length automatically (when a custom MP4/WebM video is selected)</span>
+            </label>
+          </div>
+
+          <!-- Custom MP3 & Custom Image/GIF Card -->
+          <div class="platform-card">
+            <h4>Custom Alert MP3 &amp; Custom Image / GIF</h4>
+            <p class="setting-help">
+              Pick any custom MP3/WAV audio file and custom GIF/PNG/MP4 image for your follower popup. Leave blank to use the built-in celebration chime &amp; animated star badge.
+            </p>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputFollowAlertImage">Custom Popup Image / GIF / WebM</label>
+              </div>
+              <div class="input-row">
+                <input
+                  id="inputFollowAlertImage"
+                  type="text"
+                  placeholder="Default animated star graphic (or select file / URL)"
+                />
+                <button id="btnBrowseAlertImage" class="secondary-btn">Browse...</button>
+                <button id="btnClearAlertImage" class="ghost-btn" title="Reset to default graphic">Reset</button>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputFollowAlertSound">Custom Alert Sound (MP3 / WAV / OGG)</label>
+              </div>
+              <div class="input-row">
+                <input
+                  id="inputFollowAlertSound"
+                  type="text"
+                  placeholder="Default celebration chime (or select MP3 / URL)"
+                />
+                <button id="btnBrowseAlertSound" class="secondary-btn">Browse...</button>
+                <button id="btnClearAlertSound" class="ghost-btn" title="Reset to default chime">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- OBS Popup Window & Browser Source Card -->
+          <div class="platform-card obs-card">
+            <h4>OBS Studio Popup Window &amp; Browser Source</h4>
+            <p class="setting-help">
+              Paste the Browser Source URL below into an <strong>OBS Browser Source</strong> (recommended for transparent alerts), or open the standalone <strong>OBS Alert Popup Window</strong> to capture via OBS Window Capture.
+            </p>
+
+            <div class="input-row">
+              <input
+                id="inputObsAlertUrl"
+                type="text"
+                readonly
+                value="http://127.0.0.1:45821/obs-alerts"
+              />
+              <button id="btnCopyObsUrl" class="primary-btn">Copy OBS URL</button>
+            </div>
+
+            <div class="settings-footer-actions">
+              <button id="btnOpenObsWindow" class="secondary-btn full-width">
+                🪟 Open Standalone OBS Alert Popup Window
+              </button>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chkFollowAlertAutoPopup" type="checkbox" />
+              <span>Automatically pop open the standalone OBS Alert Window when someone follows</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- TAB 3: APPEARANCE -->
+        <div id="tabAppearance" class="tab-pane">
+          <div class="setting-group">
+            <div class="setting-label-row">
+              <label for="sliderBgOpacity">Window Background Opacity (0% = Fully Transparent)</label>
+              <span id="valBgOpacity" class="setting-val">0%</span>
+            </div>
+            <input id="sliderBgOpacity" type="range" min="0" max="95" step="1" value="0" />
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-label-row">
+              <label for="sliderMsgOpacity">Message Bubble Opacity (0% = Floating Text)</label>
+              <span id="valMsgOpacity" class="setting-val">0%</span>
+            </div>
+            <input id="sliderMsgOpacity" type="range" min="0" max="100" step="1" value="0" />
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-label-row">
+              <label for="sliderFontSize">Chat Font Size</label>
+              <span id="valFontSize" class="setting-val">15px</span>
+            </div>
+            <input id="sliderFontSize" type="range" min="11" max="24" step="1" value="15" />
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-label-row">
+              <label for="selectBadgeStyle">Platform Icon Style</label>
+            </div>
+            <select id="selectBadgeStyle" class="setting-select">
+              <option value="icon-pill">Icon + Platform Name Pill (TW / YT / KICK)</option>
+              <option value="icon">Compact Separate Platform Icon Badge</option>
+            </select>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-label-row">
+              <label for="sliderAutoFade">Auto-Hide Old Messages (0 = Never)</label>
+              <span id="valAutoFade" class="setting-val">Never</span>
+            </div>
+            <input id="sliderAutoFade" type="range" min="0" max="120" step="5" value="0" />
+          </div>
+
+          <div class="toggle-grid">
+            <label class="checkbox-row">
+              <input id="chkPlatformBorder" type="checkbox" checked />
+              <span>Show Platform Color Bar (Purple / Red / Green accent)</span>
+            </label>
+            <label class="checkbox-row">
+              <input id="chkShowBadges" type="checkbox" checked />
+              <span>Show Role &amp; Sub Badges (Streamer, Mod, Sub)</span>
+            </label>
+            <label class="checkbox-row">
+              <input id="chkShowTimestamps" type="checkbox" />
+              <span>Show Message Timestamps</span>
+            </label>
+            <label class="checkbox-row">
+              <input id="chkCompactMode" type="checkbox" />
+              <span>Compact Message Spacing</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- TAB 4: TTS & HOTKEYS -->
+        <div id="tabHotkeys" class="tab-pane">
+          <div class="platform-card tts-card">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon tts-icon-box">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                  </svg>
+                </span>
+                <div>
+                  <h4>Chat Text-to-Speech (TTS)</h4>
+                  <span id="ttsStatusLabel" class="status-subtext">Muted (Press keybind to toggle)</span>
+                </div>
+              </div>
+              <button id="btnTestTts" class="ghost-btn" title="Play sample TTS voice">
+                🔊 Test Voice
+              </button>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chkTtsEnabled" type="checkbox" />
+              <span>Enable Chat TTS (Read incoming Twitch, YouTube &amp; Kick messages aloud)</span>
+            </label>
+
+            <div class="hotkey-row">
+              <button id="btnRecordTtsHotkey" class="hotkey-record-btn" title="Click, then press desired keybind to toggle TTS">
+                <span id="labelTtsHotkey">Alt+T</span>
+                <small>Click to bind TTS key</small>
+              </button>
+              <button id="btnStopTtsNow" class="secondary-btn" title="Stop speaking immediately">Stop Audio</button>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="selectTtsVoice">TTS Voice</label>
+              </div>
+              <select id="selectTtsVoice" class="setting-select">
+                <option value="">System Default Voice</option>
+              </select>
+            </div>
+
+            <div class="advanced-grid">
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderTtsVolume">TTS Volume</label>
+                  <span id="valTtsVolume" class="setting-val">85%</span>
+                </div>
+                <input id="sliderTtsVolume" type="range" min="0" max="100" step="5" value="85" />
+              </div>
+
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderTtsRate">TTS Speed</label>
+                  <span id="valTtsRate" class="setting-val">1.1x</span>
+                </div>
+                <input id="sliderTtsRate" type="range" min="0.7" max="2.0" step="0.1" value="1.1" />
+              </div>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chkTtsReadAuthor" type="checkbox" checked />
+              <span>Read username before message (&ldquo;User says: ...&rdquo;)</span>
+            </label>
+          </div>
+
+          <div class="platform-card">
+            <h4>Hide Top of Window Hotkey</h4>
+            <p class="setting-help">
+              Pressing this hotkey anywhere (even in-game) hides or shows the top header bar of the overlay.
+            </p>
+            <div class="hotkey-row">
+              <button id="btnRecordHideHotkey" class="hotkey-record-btn" title="Click, then press desired key combination">
+                <span id="labelHideHotkey">Alt+H</span>
+                <small>Click to change</small>
+              </button>
+              <button id="btnTriggerHideNow" class="secondary-btn">Hide Top Bar Now</button>
+            </div>
+          </div>
+
+          <div class="platform-card">
+            <h4>Click-Through Lock Hotkey</h4>
+            <p class="setting-help">
+              When click-through is enabled, mouse clicks pass straight through the chat window to your game or desktop underneath.
+            </p>
+            <div class="hotkey-row">
+              <button id="btnRecordLockHotkey" class="hotkey-record-btn" title="Click, then press desired key combination">
+                <span id="labelLockHotkey">Alt+L</span>
+                <small>Click to change</small>
+              </button>
+              <button id="btnTriggerLockNow" class="secondary-btn">Toggle Click-Through</button>
+            </div>
+
+            <label class="checkbox-row mt-8">
+              <input id="chkClickThroughWithTop" type="checkbox" />
+              <span>Automatically make window click-through when top bar is hidden</span>
+            </label>
+          </div>
+
+          <div class="settings-footer-actions split">
+            <button id="btnClearChat" class="secondary-btn">Clear Chat Feed</button>
+            <button id="btnResetWindow" class="secondary-btn">Reset Window Size &amp; Pos</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Subtle Bottom-Right Corner Resize Indicator -->
+    <div class="corner-grip" aria-hidden="true"></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
