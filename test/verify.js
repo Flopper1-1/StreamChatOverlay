@@ -4,6 +4,7 @@ const path = require('path');
 const { normalizeTwitchChannel } = require('../src/services/twitchChat');
 const { parseYouTubeInput } = require('../src/services/youtubeChat');
 const { maskFilePathForDisplay } = require('../src/services/configStore');
+const { buildObsAlertHtml } = require('../src/services/alertServer');
 
 console.log('Running unit & security checks...');
 
@@ -112,6 +113,16 @@ for (const rel of sourceFiles) {
     assert.ok(!pat.rx.test(content), `Found forbidden pattern (${pat.label}) in ${rel}`);
   }
 }
+
+// 7. Verify OBS Browser Source HTML <script> block compiles without any syntax or regex escaping errors
+const obsHtml = buildObsAlertHtml();
+const scriptMatch = obsHtml.match(/<script>([\s\S]*?)<\/script>/);
+assert.ok(scriptMatch && scriptMatch[1], 'OBS HTML must contain a <script> block');
+assert.doesNotThrow(() => {
+  new Function(scriptMatch[1]);
+}, 'Rendered OBS Browser Source <script> must be 100% valid JavaScript');
+assert.ok(obsHtml.includes('.alert-card.minimal-ui'), 'OBS HTML must include minimal-ui styles');
+assert.ok(obsHtml.includes('enqueueAlert'), 'OBS HTML must include alert queue handler');
 
 console.log('All unit & security checks passed successfully!');
 

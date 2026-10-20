@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
 
   // Window & Hotkeys
   hideTopHotkey: 'Alt+H',
+  hideOverlayHotkey: 'Alt+O',
   clickThroughHotkey: 'Alt+L',
   ttsHotkey: 'Alt+T',
   topBarHidden: false,
@@ -55,12 +56,13 @@ const DEFAULT_SETTINGS = {
   ttsVoiceURI: '',
   ttsReadAuthor: true,
 
-  // Follower Alerts & OBS Popup / Browser Source
+  // Follower / Donation Alerts & OBS Popup / Browser Source
   followAlertsEnabled: true,
   twitchFollowAlerts: true,
   kickFollowAlerts: true,
   followAlertTtsEnabled: true,
   followAlertObsOnly: false,
+  followAlertMinimalUi: false,
   followAlertShowInChat: true,
   followAlertAutoPopupWindow: false,
   followAlertTemplate: '{user} just followed on {platform}!',
@@ -69,6 +71,22 @@ const DEFAULT_SETTINGS = {
   followAlertVolume: 0.85,
   followAlertSoundPath: '',
   followAlertImagePath: '',
+
+  // Channel Raid Alerts (Twitch & Kick)
+  raidAlertsEnabled: true,
+  twitchRaidAlerts: true,
+  kickRaidAlerts: true,
+  raidAlertTtsEnabled: true,
+  raidAlertObsOnly: false,
+  raidAlertMinimalUi: false,
+  raidAlertShowInChat: true,
+  raidAlertTemplate: '{user} is raiding with {viewers} viewers on {platform}!',
+  raidAlertDuration: 8,
+  raidAlertPlayFullVideo: false,
+  raidAlertVolume: 0.85,
+  raidAlertSoundPath: '',
+  raidAlertImagePath: '',
+
   obsAlertPort: 45821,
 
   windowBounds: {
@@ -240,6 +258,11 @@ class ConfigStore {
     pub.followAlertSoundDisplay = maskFilePathForDisplay(this.data.followAlertSoundPath);
     pub.followAlertImagePath = pub.followAlertImageDisplay;
     pub.followAlertSoundPath = pub.followAlertSoundDisplay;
+
+    pub.raidAlertImageDisplay = maskFilePathForDisplay(this.data.raidAlertImagePath);
+    pub.raidAlertSoundDisplay = maskFilePathForDisplay(this.data.raidAlertSoundPath);
+    pub.raidAlertImagePath = pub.raidAlertImageDisplay;
+    pub.raidAlertSoundPath = pub.raidAlertSoundDisplay;
 
     return pub;
   }

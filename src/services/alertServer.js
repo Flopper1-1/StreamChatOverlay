@@ -193,6 +193,36 @@ function buildObsAlertHtml() {
       font-weight: 600;
       color: #cbd5e1;
     }
+    /* Minimal UI Mode: Only display the MP4/Media and the text underneath with no other UI */
+    .alert-card.minimal-ui {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 6px !important;
+      gap: 10px;
+    }
+    .alert-card.minimal-ui .platform-tag,
+    .alert-card.minimal-ui .alert-headline {
+      display: none !important;
+    }
+    .alert-card.minimal-ui .alert-media-wrap,
+    .alert-card.minimal-ui .alert-media-wrap img,
+    .alert-card.minimal-ui .alert-media-wrap video {
+      max-width: 380px;
+      max-height: 250px;
+      border-radius: 10px;
+    }
+    .alert-card.minimal-ui .alert-sub {
+      font-size: 22px;
+      font-weight: 900;
+      color: #ffffff;
+      text-shadow:
+        -2px -2px 0 rgba(0, 0, 0, 0.95),
+         2px -2px 0 rgba(0, 0, 0, 0.95),
+        -2px  2px 0 rgba(0, 0, 0, 0.95),
+         2px  2px 0 rgba(0, 0, 0, 0.95),
+         0px  4px 14px rgba(0, 0, 0, 0.95);
+    }
   </style>
 </head>
 <body>
@@ -212,7 +242,22 @@ function buildObsAlertHtml() {
 
     const stage = document.getElementById('alertStage');
     const queue = [];
+    const seenAlertIds = new Set();
     let isPlaying = false;
+
+    function enqueueAlert(data) {
+      if (!data || typeof data !== 'object') return;
+      if (data.id) {
+        if (seenAlertIds.has(data.id)) return;
+        seenAlertIds.add(data.id);
+        if (seenAlertIds.size > 200) {
+          const first = seenAlertIds.values().next().value;
+          seenAlertIds.delete(first);
+        }
+      }
+      queue.push(data);
+      processQueue();
+    }
 
     function playDefaultChime(volume = 0.8) {
       return new Promise((resolve) => {
@@ -298,18 +343,29 @@ function buildObsAlertHtml() {
       isPlaying = true;
       const alert = queue.shift();
       const isKick = alert.platform === 'kick';
+      const isRaid = alert.alertType === 'raid';
+      const isMinimal = Boolean(alert.minimalUi);
 
       const card = document.createElement('div');
-      card.className = 'alert-card' + (isKick ? ' kick-theme' : '');
+      card.className =
+        'alert-card' +
+        (isKick ? ' kick-theme' : '') +
+        (isMinimal ? ' minimal-ui' : '');
 
       let videoEl = null;
-      if (alert.imageUrl && (/^https?:\/\//i.test(alert.imageUrl) || /^data:image\//i.test(alert.imageUrl))) {
+      const rawImgUrl = typeof alert.imageUrl === 'string' ? alert.imageUrl.trim() : '';
+      const hasValidImageUrl =
+        rawImgUrl.startsWith('http://') ||
+        rawImgUrl.startsWith('https://') ||
+        rawImgUrl.startsWith('data:') ||
+        rawImgUrl.startsWith('/');
+      if (hasValidImageUrl) {
         const mediaWrap = document.createElement('div');
         mediaWrap.className = 'alert-media-wrap';
         if (alert.isVideo) {
           videoEl = document.createElement('video');
           videoEl.id = 'alertVideoEl';
-          videoEl.src = alert.imageUrl;
+          videoEl.src = rawImgUrl;
           videoEl.autoplay = true;
           videoEl.loop = !alert.playFullVideo;
           videoEl.muted = true;
@@ -317,7 +373,7 @@ function buildObsAlertHtml() {
           mediaWrap.appendChild(videoEl);
         } else {
           const imgEl = document.createElement('img');
-          imgEl.src = alert.imageUrl;
+          imgEl.src = rawImgUrl;
           imgEl.alt = 'Alert';
           mediaWrap.appendChild(imgEl);
         }
@@ -325,20 +381,28 @@ function buildObsAlertHtml() {
       } else {
         const defGraphic = document.createElement('div');
         defGraphic.className = 'default-graphic';
-        defGraphic.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+        defGraphic.innerHTML = isRaid
+          ? '<svg viewBox="0 0 24 24" width="42" height="42" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="42" height="42" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
         card.appendChild(defGraphic);
       }
 
       const tagEl = document.createElement('div');
       tagEl.className = 'platform-tag';
-      tagEl.textContent = isKick ? 'KICK NEW FOLLOWER' : 'TWITCH NEW FOLLOWER';
+      tagEl.textContent = isRaid
+        ? isKick
+          ? 'KICK CHANNEL RAID'
+          : 'TWITCH CHANNEL RAID'
+        : isKick
+        ? 'KICK NEW FOLLOWER'
+        : 'TWITCH NEW FOLLOWER';
       card.appendChild(tagEl);
 
       const headlineEl = document.createElement('div');
       headlineEl.className = 'alert-headline';
       const userEl = document.createElement('span');
       userEl.className = 'alert-user';
-      userEl.textContent = alert.username || 'New Follower';
+      userEl.textContent = alert.username || (isRaid ? 'Channel Raid' : 'New Follower');
       headlineEl.appendChild(userEl);
       card.appendChild(headlineEl);
 
@@ -395,14 +459,44 @@ function buildObsAlertHtml() {
       }
     }
 
-    const es = new EventSource('/events?client=' + (isPopupWindow ? 'window' : 'obs'));
-    es.addEventListener('alert', (e) => {
+    let es = null;
+    function connectSse() {
       try {
-        const data = JSON.parse(e.data);
-        queue.push(data);
-        processQueue();
+        if (es) {
+          try { es.close(); } catch (_) {}
+        }
+        es = new EventSource('/events?client=' + (isPopupWindow ? 'window' : 'obs'));
+        es.addEventListener('alert', (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            enqueueAlert(data);
+          } catch (_) {}
+        });
+        es.onerror = () => {
+          if (es && es.readyState === 2) {
+            setTimeout(connectSse, 1500);
+          }
+        };
+      } catch (_) {
+        setTimeout(connectSse, 2000);
+      }
+    }
+    connectSse();
+
+    // Backup poll every 1000ms so alerts are never missed even across app restarts
+    setInterval(async () => {
+      try {
+        const res = await fetch('/latest-alert?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = await res.json();
+        if (body && body.alert && body.alert.id) {
+          const ageMs = Date.now() - (Number(body.alert.timestamp) || 0);
+          if (ageMs >= 0 && ageMs < 12000) {
+            enqueueAlert(body.alert);
+          }
+        }
       } catch (_) {}
-    });
+    }, 1000);
   </script>
 </body>
 </html>`;
@@ -414,31 +508,46 @@ class AlertServer {
     this.server = null;
     this.port = 45821;
     this.clients = new Set(); // { res, type: 'obs' | 'window' }
+    this.lastAlertPayload = null;
   }
 
   start(preferredPort = 45821) {
     return new Promise((resolve) => {
-      this.port = Number(preferredPort) || 45821;
-      this.server = http.createServer((req, res) => this._handleRequest(req, res));
+      const targetPort = preferredPort === 0 ? 0 : (Number(preferredPort) || 45821);
+      this.port = targetPort || 45821;
+      let attempts = 0;
 
-      this.server.on('error', () => {
-        // Fallback to any available port if 45821 is already bound
-        try {
-          this.server.listen(0, '127.0.0.1', () => {
-            const addr = this.server.address();
-            if (addr && addr.port) this.port = addr.port;
+      const tryListen = (portToBind) => {
+        const srv = http.createServer((req, res) => this._handleRequest(req, res));
+        this.server = srv;
+
+        srv.once('error', (err) => {
+          if (err && err.code === 'EADDRINUSE' && portToBind !== 0 && attempts < 10) {
+            attempts += 1;
+            try { srv.close(); } catch (_) {}
+            setTimeout(() => tryListen(portToBind), 250);
+            return;
+          }
+          // Fallback to any available port only if all retries failed
+          try {
+            srv.listen(0, '127.0.0.1', () => {
+              const addr = srv.address();
+              if (addr && addr.port) this.port = addr.port;
+              resolve(this.port);
+            });
+          } catch (_) {
             resolve(this.port);
-          });
-        } catch (_) {
-          resolve(this.port);
-        }
-      });
+          }
+        });
 
-      this.server.listen(this.port, '127.0.0.1', () => {
-        const addr = this.server.address();
-        if (addr && addr.port) this.port = addr.port;
-        resolve(this.port);
-      });
+        srv.listen(portToBind, '127.0.0.1', () => {
+          const addr = srv.address();
+          if (addr && addr.port) this.port = addr.port;
+          resolve(this.port);
+        });
+      };
+
+      tryListen(targetPort);
     });
   }
 
@@ -464,6 +573,59 @@ class AlertServer {
     return false;
   }
 
+  _serveMediaFile(req, res, filePath, fallbackMime) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (!filePath || !MIME_BY_EXT[ext] || !fs.existsSync(filePath)) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    let stat;
+    try {
+      stat = fs.statSync(filePath);
+    } catch (_) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    if (!stat.isFile()) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+
+    const mimeType = getMimeType(filePath, fallbackMime);
+    const total = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+      if (!isNaN(start) && !isNaN(end) && start >= 0 && end < total && start <= end) {
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${total}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': end - start + 1,
+          'Content-Type': mimeType,
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff'
+        });
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+        return;
+      }
+    }
+
+    res.writeHead(200, {
+      'Content-Length': total,
+      'Accept-Ranges': 'bytes',
+      'Content-Type': mimeType,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+
   _handleRequest(req, res) {
     const u = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
 
@@ -474,6 +636,16 @@ class AlertServer {
         'X-Content-Type-Options': 'nosniff'
       });
       res.end(buildObsAlertHtml());
+      return;
+    }
+
+    if (u.pathname === '/latest-alert') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      res.end(JSON.stringify({ alert: this.lastAlertPayload }));
       return;
     }
 
@@ -498,39 +670,19 @@ class AlertServer {
       return;
     }
 
-    if (u.pathname === '/custom-image') {
+    if (u.pathname === '/custom-image' || u.pathname === '/custom-raid-image') {
       const settings = this.configStore.get();
-      const imgPath = (settings.followAlertImagePath || '').trim();
-      const ext = path.extname(imgPath).toLowerCase();
-      if (imgPath && MIME_BY_EXT[ext] && fs.existsSync(imgPath) && fs.statSync(imgPath).isFile()) {
-        res.writeHead(200, {
-          'Content-Type': getMimeType(imgPath, 'image/png'),
-          'Cache-Control': 'no-store',
-          'X-Content-Type-Options': 'nosniff'
-        });
-        fs.createReadStream(imgPath).pipe(res);
-        return;
-      }
-      res.writeHead(404);
-      res.end('Not found');
+      const isRaid = u.pathname === '/custom-raid-image';
+      const imgPath = ((isRaid ? settings.raidAlertImagePath : settings.followAlertImagePath) || '').trim();
+      this._serveMediaFile(req, res, imgPath, 'image/png');
       return;
     }
 
-    if (u.pathname === '/custom-sound') {
+    if (u.pathname === '/custom-sound' || u.pathname === '/custom-raid-sound') {
       const settings = this.configStore.get();
-      const soundPath = (settings.followAlertSoundPath || '').trim();
-      const ext = path.extname(soundPath).toLowerCase();
-      if (soundPath && MIME_BY_EXT[ext] && fs.existsSync(soundPath) && fs.statSync(soundPath).isFile()) {
-        res.writeHead(200, {
-          'Content-Type': getMimeType(soundPath, 'audio/mpeg'),
-          'Cache-Control': 'no-store',
-          'X-Content-Type-Options': 'nosniff'
-        });
-        fs.createReadStream(soundPath).pipe(res);
-        return;
-      }
-      res.writeHead(404);
-      res.end('Not found');
+      const isRaid = u.pathname === '/custom-raid-sound';
+      const soundPath = ((isRaid ? settings.raidAlertSoundPath : settings.followAlertSoundPath) || '').trim();
+      this._serveMediaFile(req, res, soundPath, 'audio/mpeg');
       return;
     }
 
@@ -538,10 +690,13 @@ class AlertServer {
     res.end('Not found');
   }
 
-  resolveMediaUrls() {
+  resolveMediaUrls(alertType = 'follow') {
     const s = this.configStore.get();
-    const rawImg = (s.followAlertImagePath || '').trim();
-    const rawSound = (s.followAlertSoundPath || '').trim();
+    const isRaid = alertType === 'raid';
+    const rawImg = ((isRaid ? s.raidAlertImagePath : s.followAlertImagePath) || '').trim();
+    const rawSound = ((isRaid ? s.raidAlertSoundPath : s.followAlertSoundPath) || '').trim();
+    const imgRoute = isRaid ? '/custom-raid-image' : '/custom-image';
+    const soundRoute = isRaid ? '/custom-raid-sound' : '/custom-sound';
 
     let imageUrl = '';
     let isVideo = false;
@@ -550,7 +705,7 @@ class AlertServer {
         imageUrl = rawImg;
         isVideo = /\.(mp4|webm)(\?|$)/i.test(rawImg);
       } else if (fs.existsSync(rawImg)) {
-        imageUrl = `http://127.0.0.1:${this.port}/custom-image?t=${Date.now()}`;
+        imageUrl = `http://127.0.0.1:${this.port}${imgRoute}?t=${Date.now()}`;
         isVideo = isVideoPath(rawImg);
       }
     }
@@ -560,7 +715,7 @@ class AlertServer {
       if (/^https?:\/\//i.test(rawSound) || /^data:/i.test(rawSound)) {
         soundUrl = rawSound;
       } else if (fs.existsSync(rawSound)) {
-        soundUrl = `http://127.0.0.1:${this.port}/custom-sound?t=${Date.now()}`;
+        soundUrl = `http://127.0.0.1:${this.port}${soundRoute}?t=${Date.now()}`;
       }
     }
 
@@ -569,26 +724,34 @@ class AlertServer {
 
   broadcastAlert(alertPayload) {
     const hasObs = this.hasConnectedObsBrowserSource();
+    const cleanAlert = {
+      id: alertPayload.id,
+      alertType: alertPayload.alertType || 'follow',
+      platform: alertPayload.platform,
+      username: alertPayload.username,
+      viewers: Number(alertPayload.viewers) || 0,
+      text: alertPayload.text,
+      duration: alertPayload.duration,
+      playFullVideo: Boolean(alertPayload.playFullVideo),
+      minimalUi: Boolean(alertPayload.minimalUi),
+      volume: alertPayload.volume,
+      ttsEnabled: Boolean(alertPayload.ttsEnabled),
+      ttsRate: alertPayload.ttsRate,
+      ttsVoiceURI: alertPayload.ttsVoiceURI || '',
+      imageUrl: alertPayload.imageUrl || '',
+      isVideo: Boolean(alertPayload.isVideo),
+      soundUrl: alertPayload.soundUrl || '',
+      timestamp: alertPayload.timestamp || Date.now(),
+      playAudioHere: false,
+      playTtsHere: false,
+      obsVisualActive: true
+    };
+    this.lastAlertPayload = cleanAlert;
+
     for (const client of this.clients) {
-      // Avoid double audio if both OBS browser source and Popup window are open simultaneously
       const playHere = client.type === 'obs' ? true : !hasObs;
       const payload = JSON.stringify({
-        id: alertPayload.id,
-        platform: alertPayload.platform,
-        username: alertPayload.username,
-        text: alertPayload.text,
-        duration: alertPayload.duration,
-        playFullVideo: Boolean(alertPayload.playFullVideo),
-        volume: alertPayload.volume,
-        ttsEnabled: Boolean(alertPayload.ttsEnabled),
-        ttsRate: alertPayload.ttsRate,
-        ttsVoiceURI: alertPayload.ttsVoiceURI || '',
-        imageUrl: alertPayload.imageUrl || '',
-        isVideo: Boolean(alertPayload.isVideo),
-        soundUrl: alertPayload.soundUrl || '',
-        timestamp: alertPayload.timestamp || Date.now(),
-        playAudioHere: false, // Main overlay renderer plays sound/TTS on desktop so OBS only renders visuals unless standalone
-        playTtsHere: false,
+        ...cleanAlert,
         obsVisualActive: playHere
       });
       try {
@@ -614,6 +777,7 @@ class AlertServer {
 }
 
 module.exports = {
-  AlertServer
+  AlertServer,
+  buildObsAlertHtml
 };
 

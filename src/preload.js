@@ -20,17 +20,25 @@ contextBridge.exposeInMainWorld('overlayAPI', {
   pairPlatformWindow: (platform) => ipcRenderer.invoke('chat:pair-window', platform),
   sendTestMessages: () => ipcRenderer.invoke('chat:send-test'),
 
-  // Follower Alerts & OBS Integration
+  // Follower / Donation / Raid Alerts & OBS Integration
   getAlertInfo: () => ipcRenderer.invoke('alert:get-info'),
   testFollowAlert: (platform) => ipcRenderer.invoke('alert:test-follow', platform),
+  testRaidAlert: (platform) => ipcRenderer.invoke('alert:test-raid', platform),
   openObsAlertWindow: () => ipcRenderer.invoke('alert:open-obs-window'),
   pickAlertMediaFile: (mediaType) => ipcRenderer.invoke('alert:pick-file', mediaType),
 
   toggleTopBar: (forceHidden) => ipcRenderer.invoke('window:toggle-top-bar', forceHidden),
+  toggleOverlayVisibility: (forceHidden) =>
+    ipcRenderer.invoke('window:toggle-overlay-visibility', forceHidden),
   toggleClickThrough: (forceClickThrough) =>
     ipcRenderer.invoke('window:toggle-click-through', forceClickThrough),
   toggleTts: (forceState) => ipcRenderer.invoke('window:toggle-tts', forceState),
-  setIgnoreMouse: (ignore) => ipcRenderer.send('window:set-ignore-mouse', Boolean(ignore)),
+  setIgnoreMouse: (ignore, forceInteractive = false) =>
+    ipcRenderer.send('window:set-ignore-mouse', {
+      ignore: Boolean(ignore),
+      forceInteractive: Boolean(forceInteractive)
+    }),
+  focusWindow: () => ipcRenderer.send('window:focus'),
 
   getWindowBounds: () => ipcRenderer.invoke('window:get-bounds'),
   setWindowBounds: (bounds) => ipcRenderer.send('window:set-bounds', bounds),
@@ -57,6 +65,11 @@ contextBridge.exposeInMainWorld('overlayAPI', {
     const handler = (_, state) => cb(state);
     ipcRenderer.on('window:top-bar-state', handler);
     return () => ipcRenderer.removeListener('window:top-bar-state', handler);
+  },
+  onOverlayVisibilityToggled: (cb) => {
+    const handler = (_, state) => cb(state);
+    ipcRenderer.on('window:overlay-visibility-state', handler);
+    return () => ipcRenderer.removeListener('window:overlay-visibility-state', handler);
   },
   onClickThroughToggled: (cb) => {
     const handler = (_, state) => cb(state);

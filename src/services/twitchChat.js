@@ -204,6 +204,22 @@ class TwitchChatService extends EventEmitter {
     });
   }
 
+  _emitRaid(username, viewers = 1) {
+    if (!username) return;
+    const clean = String(username).trim().replace(/^@/, '');
+    if (!clean) return;
+    const viewerCount = Math.max(1, parseInt(String(viewers || '1'), 10) || 1);
+
+    this.emit('raid', {
+      id: `tw-raid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      platform: 'twitch',
+      channel: this.channel,
+      username: clean,
+      viewers: viewerCount,
+      timestamp: Date.now()
+    });
+  }
+
   async _getAuthToken() {
     if (this.oauthToken) {
       return this.oauthToken.replace(/^oauth:/i, '').trim();
@@ -470,6 +486,15 @@ class TwitchChatService extends EventEmitter {
       const author = tags['display-name'] || tags.login || 'Twitch Event';
       if (msgId === 'follow' || msgId === 'follower') {
         this._emitFollow(author);
+      } else if (msgId === 'raid') {
+        const raider =
+          tags['msg-param-displayName'] ||
+          tags['display-name'] ||
+          tags['msg-param-login'] ||
+          tags.login ||
+          author;
+        const viewers = parseInt(tags['msg-param-viewerCount'] || '1', 10) || 1;
+        this._emitRaid(raider, viewers);
       }
       const sysMsg = tags['system-msg'] ? String(tags['system-msg']).replace(/\\s/g, ' ') : '';
       const userMsgMatch = rest.match(/USERNOTICE\s+#\S+(?:\s+:(.*))?$/);

@@ -34,6 +34,15 @@ let pairWindow = null;
 let obsAlertWindow = null;
 let alwaysOnTopInterval = null;
 let isClickThrough = false;
+let isOverlayHidden = false;
+const lastToggleTimestamps = { top: 0, overlay: 0, lock: 0, tts: 0 };
+
+function shouldAllowToggle(key) {
+  const now = Date.now();
+  if (now - (lastToggleTimestamps[key] || 0) < 150) return false;
+  lastToggleTimestamps[key] = now;
+  return true;
+}
 
 const twitchService = new TwitchChatService();
 const youtubeService = new YouTubeChatService();
@@ -92,6 +101,34 @@ function toggleTopBar(forceHidden) {
   return statePayload;
 }
 
+function toggleOverlayVisibility(forceHidden) {
+  const settings = configStore.get();
+  isOverlayHidden =
+    typeof forceHidden === 'boolean' ? forceHidden : !isOverlayHidden;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      if (isOverlayHidden) {
+        mainWindow.setIgnoreMouseEvents(true);
+      } else {
+        if (isClickThrough) {
+          mainWindow.setIgnoreMouseEvents(true, { forward: true });
+        } else {
+          mainWindow.setIgnoreMouseEvents(false);
+        }
+        enforceAlwaysOnTop();
+      }
+    } catch (_) {}
+  }
+
+  const statePayload = {
+    overlayHidden: isOverlayHidden,
+    hotkey: settings.hideOverlayHotkey || DEFAULT_SETTINGS.hideOverlayHotkey
+  };
+  sendToRenderer('window:overlay-visibility-state', statePayload);
+  return statePayload;
+}
+
 function toggleTts(forceState) {
   const settings = configStore.get();
   const nextEnabled =
@@ -110,46 +147,58 @@ function toggleTts(forceState) {
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   const settings = configStore.get();
+  const used = new Set();
+
+  const tryBind = (rawKey, handler) => {
+    if (!rawKey || typeof rawKey !== 'string') return false;
+    const normalized = rawKey
+      .trim()
+      .replace(/^Ctrl\+/i, 'CommandOrControl+');
+    if (!normalized) return false;
+    const lower = normalized.toLowerCase();
+    if (used.has(lower)) return false;
+    try {
+      const ok = globalShortcut.register(normalized, handler);
+      if (ok) {
+        used.add(lower);
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
 
   const hideKey = (settings.hideTopHotkey || DEFAULT_SETTINGS.hideTopHotkey).trim();
-  if (hideKey) {
-    try {
-      globalShortcut.register(hideKey, () => {
-        toggleTopBar();
-      });
-    } catch (_) {}
-  }
-
-  // Also register F8 as a quick secondary global toggle if not already used
-  if (hideKey.toUpperCase() !== 'F8') {
-    try {
-      globalShortcut.register('F8', () => {
-        toggleTopBar();
-      });
-    } catch (_) {}
-  }
-
+  const hideOverlayKey = (settings.hideOverlayHotkey || DEFAULT_SETTINGS.hideOverlayHotkey).trim();
   const lockKey = (settings.clickThroughHotkey || DEFAULT_SETTINGS.clickThroughHotkey).trim();
-  if (lockKey && lockKey.toLowerCase() !== hideKey.toLowerCase()) {
-    try {
-      globalShortcut.register(lockKey, () => {
-        applyClickThrough(!isClickThrough);
-      });
-    } catch (_) {}
-  }
-
   const ttsKey = (settings.ttsHotkey || DEFAULT_SETTINGS.ttsHotkey).trim();
-  if (
-    ttsKey &&
-    ttsKey.toLowerCase() !== hideKey.toLowerCase() &&
-    ttsKey.toLowerCase() !== lockKey.toLowerCase()
-  ) {
-    try {
-      globalShortcut.register(ttsKey, () => {
-        toggleTts();
-      });
-    } catch (_) {}
-  }
+
+  // Primary user-configured hotkeys
+  tryBind(hideKey, () => {
+    if (shouldAllowToggle('top')) toggleTopBar();
+  });
+  tryBind(hideOverlayKey, () => {
+    if (shouldAllowToggle('overlay')) toggleOverlayVisibility();
+  });
+  tryBind(lockKey, () => {
+    if (shouldAllowToggle('lock')) applyClickThrough(!isClickThrough);
+  });
+  tryBind(ttsKey, () => {
+    if (shouldAllowToggle('tts')) toggleTts();
+  });
+
+  // Secondary function-key shortcuts (if not already bound)
+  tryBind('F8', () => {
+    if (shouldAllowToggle('top')) toggleTopBar();
+  });
+  tryBind('F10', () => {
+    if (shouldAllowToggle('overlay')) toggleOverlayVisibility();
+  });
+  tryBind('F9', () => {
+    if (shouldAllowToggle('lock')) applyClickThrough(!isClickThrough);
+  });
+  tryBind('F7', () => {
+    if (shouldAllowToggle('tts')) toggleTts();
+  });
 }
 
 function getSafeInitialBounds(savedBounds) {
@@ -237,16 +286,18 @@ function triggerFollowAlert({ platform = 'twitch', username = 'NewFollower', isT
     .replace(/\{user\}/gi, username)
     .replace(/\{platform\}/gi, platformLabel);
 
-  const media = alertServer ? alertServer.resolveMediaUrls() : { imageUrl: '', isVideo: false, soundUrl: '' };
+  const media = alertServer ? alertServer.resolveMediaUrls('follow') : { imageUrl: '', isVideo: false, soundUrl: '' };
 
   const alertPayload = {
     id: `follow-alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    alertType: 'follow',
     platform,
     username,
     text,
     duration: Number(s.followAlertDuration) || 6,
     playFullVideo: Boolean(s.followAlertPlayFullVideo),
     obsOnly: Boolean(s.followAlertObsOnly),
+    minimalUi: Boolean(s.followAlertMinimalUi),
     volume: Number(s.followAlertVolume ?? 0.85),
     ttsEnabled: Boolean(s.followAlertTtsEnabled),
     ttsRate: Number(s.ttsRate ?? 1.1),
@@ -278,6 +329,73 @@ function triggerFollowAlert({ platform = 'twitch', username = 'NewFollower', isT
       segments: [{ type: 'text', text }],
       isEvent: true,
       skipChatTts: true, // Follow Alert TTS handles speaking this so it isn't read twice
+      timestamp: Date.now()
+    });
+  }
+}
+
+function triggerRaidAlert({ platform = 'twitch', username = 'RaiderStreamer', viewers = 42, isTest = false }) {
+  if (!configStore) return;
+  const s = configStore.get();
+
+  if (!isTest) {
+    if (!s.raidAlertsEnabled) return;
+    if (platform === 'twitch' && !s.twitchRaidAlerts) return;
+    if (platform === 'kick' && !s.kickRaidAlerts) return;
+  }
+
+  const viewerCount = Math.max(1, Number(viewers) || 1);
+  const platformLabel = platform === 'kick' ? 'Kick' : 'Twitch';
+  const template = (s.raidAlertTemplate || '{user} is raiding with {viewers} viewers on {platform}!').trim();
+  const text = template
+    .replace(/\{user\}/gi, username)
+    .replace(/\{viewers\}/gi, String(viewerCount))
+    .replace(/\{platform\}/gi, platformLabel);
+
+  const media = alertServer ? alertServer.resolveMediaUrls('raid') : { imageUrl: '', isVideo: false, soundUrl: '' };
+
+  const alertPayload = {
+    id: `raid-alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    alertType: 'raid',
+    platform,
+    username,
+    viewers: viewerCount,
+    text,
+    duration: Number(s.raidAlertDuration) || 8,
+    playFullVideo: Boolean(s.raidAlertPlayFullVideo),
+    obsOnly: Boolean(s.raidAlertObsOnly),
+    minimalUi: Boolean(s.raidAlertMinimalUi),
+    volume: Number(s.raidAlertVolume ?? 0.85),
+    ttsEnabled: Boolean(s.raidAlertTtsEnabled),
+    ttsRate: Number(s.ttsRate ?? 1.1),
+    ttsVoiceURI: s.ttsVoiceURI || '',
+    imageUrl: media.imageUrl,
+    isVideo: media.isVideo,
+    soundUrl: media.soundUrl,
+    timestamp: Date.now()
+  };
+
+  if (s.followAlertAutoPopupWindow && !s.raidAlertObsOnly) {
+    openObsAlertPopupWindow(false);
+  }
+
+  if (alertServer) {
+    alertServer.broadcastAlert(alertPayload);
+  }
+
+  sendToRenderer('alert:follow', alertPayload);
+
+  if (!s.raidAlertObsOnly && s.raidAlertShowInChat !== false) {
+    sendToRenderer('chat:message', {
+      id: alertPayload.id,
+      platform,
+      author: username,
+      color: platform === 'kick' ? '#53FC18' : '#B565FF',
+      badges: [{ type: 'event', label: 'CHANNEL RAID' }],
+      text,
+      segments: [{ type: 'text', text }],
+      isEvent: true,
+      skipChatTts: true,
       timestamp: Date.now()
     });
   }
@@ -323,11 +441,7 @@ function createOverlayWindow() {
   mainWindow.once('ready-to-show', () => {
     enforceAlwaysOnTop();
     mainWindow.show();
-    // Enable click-through with mousemove forwarding so transparent areas & chat pass clicks through
-    mainWindow.setIgnoreMouseEvents(true, { forward: true });
-    if (settings.topBarHidden && settings.clickThroughWhenTopHidden) {
-      applyClickThrough(true);
-    }
+    mainWindow.focus();
   });
 
   const saveBoundsDebounced = (() => {
@@ -394,6 +508,14 @@ function createOverlayWindow() {
           hasFollowOverlayBanner: !document.getElementById('followAlertBanner').classList.contains('hidden'),
           obsUrlValue: document.getElementById('inputObsAlertUrl') ? document.getElementById('inputObsAlertUrl').value : ''
         })`);
+        await mainWindow.webContents.executeJavaScript('window.overlayAPI.saveSettings({ raidAlertMinimalUi: true })');
+        await mainWindow.webContents.executeJavaScript('window.overlayAPI.testRaidAlert("twitch")');
+        await new Promise((r) => setTimeout(r, 250));
+        const raidMinimalCheck = await mainWindow.webContents.executeJavaScript(`({
+          hasRaidMinimalUiClass: document.getElementById('followAlertBanner').classList.contains('minimal-ui'),
+          raidSubText: document.getElementById('followAlertSub').textContent
+        })`);
+        await mainWindow.webContents.executeJavaScript('window.overlayAPI.saveSettings({ raidAlertMinimalUi: false })');
         const publicSettingsCheck = await mainWindow.webContents.executeJavaScript(`
           window.overlayAPI.getSettings().then((s) => ({
             twitchTokenExposed: Boolean(s.twitchOauthToken),
@@ -407,12 +529,20 @@ function createOverlayWindow() {
           `document.getElementById('topBar').classList.contains('hidden')`
         );
         toggleTopBar(false);
+        toggleOverlayVisibility(true);
+        await new Promise((r) => setTimeout(r, 150));
+        const overlayHiddenAfter = await mainWindow.webContents.executeJavaScript(
+          `document.body.classList.contains('overlay-hidden')`
+        );
+        toggleOverlayVisibility(false);
         console.log('ELECTRON_VERIFY_RESULT:', JSON.stringify({
           alwaysOnTop,
           ...domCheck,
           ...alertCheck,
+          ...raidMinimalCheck,
           ...publicSettingsCheck,
-          topHiddenAfter
+          topHiddenAfter,
+          overlayHiddenAfter
         }));
         app.quit();
       } catch (err) {
@@ -558,6 +688,9 @@ function wireServiceEvents() {
   twitchService.on('follow', (ev) => {
     triggerFollowAlert(ev);
   });
+  twitchService.on('raid', (ev) => {
+    triggerRaidAlert(ev);
+  });
 
   youtubeService.on('message', (msg) => {
     sendToRenderer('chat:message', msg);
@@ -587,6 +720,9 @@ function wireServiceEvents() {
   kickService.on('follow', (ev) => {
     triggerFollowAlert(ev);
   });
+  kickService.on('raid', (ev) => {
+    triggerRaidAlert(ev);
+  });
 }
 
 function wireIpcHandlers() {
@@ -600,6 +736,7 @@ function wireIpcHandlers() {
 
     if (
       partial.hideTopHotkey !== undefined ||
+      partial.hideOverlayHotkey !== undefined ||
       partial.clickThroughHotkey !== undefined ||
       partial.ttsHotkey !== undefined
     ) {
@@ -821,19 +958,32 @@ function wireIpcHandlers() {
     return { ok: true };
   });
 
+  ipcMain.handle('alert:test-raid', (_, platform = 'twitch') => {
+    const sampleUser = platform === 'kick' ? 'KickRaiderPro' : 'TwitchRaider99';
+    const sampleViewers = platform === 'kick' ? 85 : 142;
+    triggerRaidAlert({
+      platform: platform === 'kick' ? 'kick' : 'twitch',
+      username: sampleUser,
+      viewers: sampleViewers,
+      isTest: true
+    });
+    return { ok: true };
+  });
+
   ipcMain.handle('alert:open-obs-window', () => {
     openObsAlertPopupWindow(true);
     return { ok: true };
   });
 
   ipcMain.handle('alert:pick-file', async (_, mediaType) => {
-    const isAudio = mediaType === 'sound';
+    const isAudio = mediaType === 'sound' || mediaType === 'raid-sound';
+    const isRaid = mediaType === 'raid-image' || mediaType === 'raid-sound';
     const filters = isAudio
       ? [{ name: 'Audio Files (MP3, WAV, OGG, M4A)', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'] }]
       : [{ name: 'Images, GIFs & Short Videos', extensions: ['gif', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'apng', 'mp4', 'webm'] }];
 
     const res = await dialog.showOpenDialog(mainWindow, {
-      title: isAudio ? 'Select Custom Follow Alert Sound (MP3 / WAV / OGG)' : 'Select Custom Follow Alert Image / GIF',
+      title: isAudio ? 'Select Custom Alert Sound (MP3 / WAV / OGG)' : 'Select Custom Alert Video / Image / GIF',
       properties: ['openFile'],
       filters
     });
@@ -843,7 +993,13 @@ function wireIpcHandlers() {
     }
 
     const pickedPath = res.filePaths[0];
-    const field = isAudio ? 'followAlertSoundPath' : 'followAlertImagePath';
+    const field = isRaid
+      ? isAudio
+        ? 'raidAlertSoundPath'
+        : 'raidAlertImagePath'
+      : isAudio
+      ? 'followAlertSoundPath'
+      : 'followAlertImagePath';
     configStore.save({ [field]: pickedPath });
     sendToRenderer('settings:updated', configStore.getPublic());
     return { canceled: false, fileName: path.basename(pickedPath) };
@@ -851,6 +1007,10 @@ function wireIpcHandlers() {
 
   ipcMain.handle('window:toggle-top-bar', (_, forceHidden) => {
     return toggleTopBar(forceHidden);
+  });
+
+  ipcMain.handle('window:toggle-overlay-visibility', (_, forceHidden) => {
+    return toggleOverlayVisibility(forceHidden);
   });
 
   ipcMain.handle('window:toggle-click-through', (_, forceState) => {
@@ -863,14 +1023,34 @@ function wireIpcHandlers() {
     return toggleTts(forceState);
   });
 
-  ipcMain.on('window:set-ignore-mouse', (_, ignore) => {
+  ipcMain.on('window:set-ignore-mouse', (_, payload) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
+    const ignore =
+      typeof payload === 'object' && payload !== null
+        ? Boolean(payload.ignore)
+        : Boolean(payload);
+    const forceInteractive =
+      typeof payload === 'object' && payload !== null
+        ? Boolean(payload.forceInteractive)
+        : false;
     try {
-      if (isClickThrough || ignore) {
+      if (isOverlayHidden) {
+        mainWindow.setIgnoreMouseEvents(true);
+      } else if (forceInteractive) {
+        mainWindow.setIgnoreMouseEvents(false);
+      } else if (isClickThrough || ignore) {
         mainWindow.setIgnoreMouseEvents(true, { forward: true });
       } else {
         mainWindow.setIgnoreMouseEvents(false);
       }
+    } catch (_) {}
+  });
+
+  ipcMain.on('window:focus', () => {
+    if (!mainWindow || mainWindow.isDestroyed() || isOverlayHidden) return;
+    try {
+      mainWindow.setIgnoreMouseEvents(false);
+      mainWindow.focus();
     } catch (_) {}
   });
 
@@ -920,6 +1100,7 @@ if (!gotTheLock && !process.argv.includes('--verify')) {
   app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      toggleOverlayVisibility(false);
       toggleTopBar(false);
       enforceAlwaysOnTop();
       mainWindow.focus();
@@ -928,8 +1109,15 @@ if (!gotTheLock && !process.argv.includes('--verify')) {
 
   app.whenReady().then(async () => {
     configStore = new ConfigStore(app.getPath('userData'));
+    // Always start with the top bar visible & overlay interactive on launch so user is never locked out
+    configStore.save({ topBarHidden: false });
+    isClickThrough = false;
+    isOverlayHidden = false;
     alertServer = new AlertServer(configStore);
-    await alertServer.start(configStore.get().obsAlertPort || 45821);
+    const desiredPort = process.argv.includes('--verify')
+      ? 0
+      : (configStore.get().obsAlertPort || 45821);
+    await alertServer.start(desiredPort);
     wireServiceEvents();
     wireIpcHandlers();
     createOverlayWindow();

@@ -162,7 +162,7 @@
           <button id="btnEmptyHideTop" class="secondary-btn">Hide Top Bar</button>
         </div>
         <div class="hotkey-hint">
-          Hide Top: <kbd id="emptyHotkeyHint">Alt+H</kbd> &bull; Toggle TTS: <kbd id="emptyTtsHotkeyHint">Alt+T</kbd>
+          Hide Overlay: <kbd id="emptyOverlayHotkeyHint">Alt+O</kbd> &bull; Hide Top: <kbd id="emptyHotkeyHint">Alt+H</kbd> &bull; Toggle TTS: <kbd id="emptyTtsHotkeyHint">Alt+T</kbd>
         </div>
       </div>
 
@@ -178,7 +178,7 @@
       <div class="settings-header">
         <div class="settings-tabs">
           <button class="tab-btn active" data-tab="tabConnect">Channels</button>
-          <button class="tab-btn" data-tab="tabAlerts">Follow Alerts &amp; OBS</button>
+          <button class="tab-btn" data-tab="tabAlerts">Alerts &amp; Raids</button>
           <button class="tab-btn" data-tab="tabAppearance">Appearance</button>
           <button class="tab-btn" data-tab="tabHotkeys">TTS &amp; Hotkeys</button>
         </div>
@@ -314,40 +314,44 @@
           </div>
         </div>
 
-        <!-- TAB 2: FOLLOWER ALERTS & OBS -->
+        <!-- TAB 2: FOLLOWER / DONATION & CHANNEL RAID ALERTS -->
         <div id="tabAlerts" class="tab-pane">
           <div class="platform-card alert-card-settings">
             <div class="card-header">
               <div class="card-title-group">
                 <span class="card-icon alert-icon-box">🎉</span>
                 <div>
-                  <h4>Twitch &amp; Kick Follower Alerts</h4>
-                  <span class="status-subtext">Reads out new followers &amp; shows popup in OBS</span>
+                  <h4>Follower / Donation Alerts (Twitch &amp; Kick)</h4>
+                  <span class="status-subtext">Reads out alerts &amp; displays MP4/GIF popup in OBS or Overlay</span>
                 </div>
               </div>
             </div>
 
             <div class="settings-footer-actions split">
-              <button id="btnTestTwitchFollow" class="primary-btn">🎉 Test Twitch Follow</button>
-              <button id="btnTestKickFollow" class="connect-btn kick-connect-btn">🎉 Test Kick Follow</button>
+              <button id="btnTestTwitchFollow" class="primary-btn">🎉 Test Twitch Alert</button>
+              <button id="btnTestKickFollow" class="connect-btn kick-connect-btn">🎉 Test Kick Alert</button>
             </div>
 
             <div class="toggle-grid">
               <label class="checkbox-row">
                 <input id="chkFollowAlertsEnabled" type="checkbox" checked />
-                <span>Enable Follower Alerts (Master Toggle)</span>
+                <span>Enable Follower / Donation Alerts (Master Toggle)</span>
               </label>
               <label class="checkbox-row">
                 <input id="chkTwitchFollowAlerts" type="checkbox" checked />
-                <span>Twitch Follower Alerts</span>
+                <span>Twitch Alerts</span>
               </label>
               <label class="checkbox-row">
                 <input id="chkKickFollowAlerts" type="checkbox" checked />
-                <span>Kick Follower Alerts</span>
+                <span>Kick Alerts</span>
               </label>
               <label class="checkbox-row">
                 <input id="chkFollowAlertTts" type="checkbox" checked />
-                <span>🔊 Read Follower Alert Aloud with TTS (After MP3 finishes)</span>
+                <span>🔊 Read Alert Aloud with TTS (After MP3 finishes)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkFollowAlertMinimalUi" type="checkbox" />
+                <span>🎬 Only display MP4/Media &amp; text underneath (No other UI / borders / badges)</span>
               </label>
               <label class="checkbox-row">
                 <input id="chkFollowAlertObsOnly" type="checkbox" />
@@ -396,24 +400,16 @@
               <input id="chkFollowAlertPlayFullVideo" type="checkbox" />
               <span>Play full video length automatically (when a custom MP4/WebM video is selected)</span>
             </label>
-          </div>
-
-          <!-- Custom MP3 & Custom Image/GIF Card -->
-          <div class="platform-card">
-            <h4>Custom Alert MP3 &amp; Custom Image / GIF</h4>
-            <p class="setting-help">
-              Pick any custom MP3/WAV audio file and custom GIF/PNG/MP4 image for your follower popup. Leave blank to use the built-in celebration chime &amp; animated star badge.
-            </p>
 
             <div class="setting-group">
               <div class="setting-label-row">
-                <label for="inputFollowAlertImage">Custom Popup Image / GIF / WebM</label>
+                <label for="inputFollowAlertImage">Custom Popup MP4 / WebM / GIF / Image</label>
               </div>
               <div class="input-row">
                 <input
                   id="inputFollowAlertImage"
                   type="text"
-                  placeholder="Default animated star graphic (or select file / URL)"
+                  placeholder="Default animated star graphic (or select MP4 / GIF / URL)"
                 />
                 <button id="btnBrowseAlertImage" class="secondary-btn">Browse...</button>
                 <button id="btnClearAlertImage" class="ghost-btn" title="Reset to default graphic">Reset</button>
@@ -432,6 +428,123 @@
                 />
                 <button id="btnBrowseAlertSound" class="secondary-btn">Browse...</button>
                 <button id="btnClearAlertSound" class="ghost-btn" title="Reset to default chime">Reset</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CHANNEL RAID ALERTS (TWITCH & KICK) -->
+          <div class="platform-card alert-card-settings">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon alert-icon-box">🚨</span>
+                <div>
+                  <h4>Channel Raid Alerts (Twitch &amp; Kick)</h4>
+                  <span class="status-subtext">Reads out incoming Twitch Raids &amp; Kick Hosts/Raids with custom MP4/MP3</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-footer-actions split">
+              <button id="btnTestTwitchRaid" class="primary-btn">🚨 Test Twitch Raid</button>
+              <button id="btnTestKickRaid" class="connect-btn kick-connect-btn">🚨 Test Kick Raid</button>
+            </div>
+
+            <div class="toggle-grid">
+              <label class="checkbox-row">
+                <input id="chkRaidAlertsEnabled" type="checkbox" checked />
+                <span>Enable Channel Raid Alerts (Master Toggle)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkTwitchRaidAlerts" type="checkbox" checked />
+                <span>Twitch Channel Raid Alerts</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkKickRaidAlerts" type="checkbox" checked />
+                <span>Kick Channel Raid / Host Alerts</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkRaidAlertTts" type="checkbox" checked />
+                <span>🔊 Read Raid Alert Aloud with TTS (After MP3 finishes)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkRaidAlertMinimalUi" type="checkbox" />
+                <span>🎬 Only display MP4/Media &amp; text underneath (No other UI / borders / badges)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkRaidAlertObsOnly" type="checkbox" />
+                <span>📺 Only display on OBS Browser (Do NOT display on this overlay)</span>
+              </label>
+              <label class="checkbox-row">
+                <input id="chkRaidAlertShowInChat" type="checkbox" checked />
+                <span>Show &ldquo;CHANNEL RAID&rdquo; announcement in chat overlay feed</span>
+              </label>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputRaidAlertTemplate">Raid Message &amp; TTS Readout Template ({user}, {viewers}, {platform})</label>
+              </div>
+              <input
+                id="inputRaidAlertTemplate"
+                type="text"
+                value="{user} is raiding with {viewers} viewers on {platform}!"
+                placeholder="{user} is raiding with {viewers} viewers on {platform}!"
+              />
+            </div>
+
+            <div class="advanced-grid">
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderRaidAlertVolume">Raid Sound &amp; TTS Volume</label>
+                  <span id="valRaidAlertVolume" class="setting-val">85%</span>
+                </div>
+                <input id="sliderRaidAlertVolume" type="range" min="0" max="100" step="5" value="85" />
+              </div>
+
+              <div class="setting-group">
+                <div class="setting-label-row">
+                  <label for="sliderRaidAlertDuration">Raid Video / Alert Play Duration</label>
+                  <span id="valRaidAlertDuration" class="setting-val">8s</span>
+                </div>
+                <div class="duration-control-row">
+                  <input id="sliderRaidAlertDuration" type="range" min="1" max="60" step="1" value="8" />
+                  <input id="inputRaidAlertDurationSec" type="number" min="1" max="300" step="1" value="8" class="duration-num-input" title="Exact raid video/alert play duration in seconds" />
+                </div>
+              </div>
+            </div>
+
+            <label class="checkbox-row">
+              <input id="chkRaidAlertPlayFullVideo" type="checkbox" />
+              <span>Play full video length automatically (when a custom MP4/WebM video is selected)</span>
+            </label>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputRaidAlertImage">Custom Raid Popup MP4 / WebM / GIF / Image</label>
+              </div>
+              <div class="input-row">
+                <input
+                  id="inputRaidAlertImage"
+                  type="text"
+                  placeholder="Default animated raid badge (or select MP4 / GIF / URL)"
+                />
+                <button id="btnBrowseRaidImage" class="secondary-btn">Browse...</button>
+                <button id="btnClearRaidImage" class="ghost-btn" title="Reset to default raid graphic">Reset</button>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputRaidAlertSound">Custom Raid Sound (MP3 / WAV / OGG)</label>
+              </div>
+              <div class="input-row">
+                <input
+                  id="inputRaidAlertSound"
+                  type="text"
+                  placeholder="Default celebration chime (or select MP3 / URL)"
+                />
+                <button id="btnBrowseRaidSound" class="secondary-btn">Browse...</button>
+                <button id="btnClearRaidSound" class="ghost-btn" title="Reset to default chime">Reset</button>
               </div>
             </div>
           </div>
@@ -596,6 +709,20 @@
               <input id="chkTtsReadAuthor" type="checkbox" checked />
               <span>Read username before message (&ldquo;User says: ...&rdquo;)</span>
             </label>
+          </div>
+
+          <div class="platform-card">
+            <h4>Hide Entire Overlay Hotkey</h4>
+            <p class="setting-help">
+              Pressing this hotkey anywhere (even in-game) completely hides or shows the entire chat overlay window while keeping chat &amp; OBS alerts running.
+            </p>
+            <div class="hotkey-row">
+              <button id="btnRecordHideOverlayHotkey" class="hotkey-record-btn" title="Click, then press desired key combination">
+                <span id="labelHideOverlayHotkey">Alt+O</span>
+                <small>Click to change</small>
+              </button>
+              <button id="btnTriggerHideOverlayNow" class="secondary-btn">Hide Overlay Now</button>
+            </div>
           </div>
 
           <div class="platform-card">

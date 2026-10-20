@@ -176,6 +176,22 @@ class KickChatService extends EventEmitter {
     });
   }
 
+  _emitRaid(username, viewers = 1) {
+    if (!username) return;
+    const clean = String(username).trim().replace(/^@/, '');
+    if (!clean) return;
+    const viewerCount = Math.max(1, parseInt(String(viewers || '1'), 10) || 1);
+
+    this.emit('raid', {
+      id: `kick-raid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      platform: 'kick',
+      channel: this.channel,
+      username: clean,
+      viewers: viewerCount,
+      timestamp: Date.now()
+    });
+  }
+
   _startHiddenBridgeWindow() {
     if (!this.BrowserWindow || !this.shouldRun) return;
     this._destroyHiddenWindow();
@@ -555,6 +571,31 @@ class KickChatService extends EventEmitter {
           this.lastFollowersCount = count;
           this._emitFollow(inner.username || 'New Kick Follower');
         }
+      }
+    }
+
+    // Kick Channel Raid / Host Events
+    if (
+      eventName.includes('Host') ||
+      eventName.includes('Raid') ||
+      eventName.includes('ChatMoveToSupportedChannel')
+    ) {
+      const raiderName =
+        inner.host_username ||
+        inner.raider_username ||
+        inner.username ||
+        (inner.user && inner.user.username) ||
+        (inner.hosted && inner.hosted.username) ||
+        (inner.channel && inner.channel.user && inner.channel.user.username) ||
+        '';
+      const viewerCount =
+        inner.number_viewers ??
+        inner.viewers_count ??
+        inner.viewer_count ??
+        inner.viewers ??
+        1;
+      if (raiderName) {
+        this._emitRaid(raiderName, viewerCount);
       }
     }
   }

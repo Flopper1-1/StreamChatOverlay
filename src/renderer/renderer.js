@@ -32,6 +32,7 @@ let currentSettings = {
   compactMode: false,
   autoFadeSeconds: 0,
   hideTopHotkey: 'Alt+H',
+  hideOverlayHotkey: 'Alt+O',
   clickThroughHotkey: 'Alt+L',
   ttsHotkey: 'Alt+T',
   topBarHidden: false,
@@ -46,6 +47,7 @@ let currentSettings = {
   kickFollowAlerts: true,
   followAlertTtsEnabled: true,
   followAlertObsOnly: false,
+  followAlertMinimalUi: false,
   followAlertShowInChat: true,
   followAlertAutoPopupWindow: false,
   followAlertTemplate: '{user} just followed on {platform}!',
@@ -53,7 +55,20 @@ let currentSettings = {
   followAlertPlayFullVideo: false,
   followAlertVolume: 0.85,
   followAlertSoundPath: '',
-  followAlertImagePath: ''
+  followAlertImagePath: '',
+  raidAlertsEnabled: true,
+  twitchRaidAlerts: true,
+  kickRaidAlerts: true,
+  raidAlertTtsEnabled: true,
+  raidAlertObsOnly: false,
+  raidAlertMinimalUi: false,
+  raidAlertShowInChat: true,
+  raidAlertTemplate: '{user} is raiding with {viewers} viewers on {platform}!',
+  raidAlertDuration: 8,
+  raidAlertPlayFullVideo: false,
+  raidAlertVolume: 0.85,
+  raidAlertSoundPath: '',
+  raidAlertImagePath: ''
 };
 
 let autoScroll = true;
@@ -97,6 +112,7 @@ const followAlertUser = document.getElementById('followAlertUser');
 const followAlertSub = document.getElementById('followAlertSub');
 
 const emptyState = document.getElementById('emptyState');
+const emptyOverlayHotkeyHint = document.getElementById('emptyOverlayHotkeyHint');
 const emptyHotkeyHint = document.getElementById('emptyHotkeyHint');
 const emptyTtsHotkeyHint = document.getElementById('emptyTtsHotkeyHint');
 const btnEmptyOpenSettings = document.getElementById('btnEmptyOpenSettings');
@@ -138,13 +154,14 @@ const kickStatusText = document.getElementById('kickStatusText');
 
 const btnModalTestChat = document.getElementById('btnModalTestChat');
 
-// Follower Alerts & OBS inputs
+// Follower / Donation Alerts & OBS inputs
 const btnTestTwitchFollow = document.getElementById('btnTestTwitchFollow');
 const btnTestKickFollow = document.getElementById('btnTestKickFollow');
 const chkFollowAlertsEnabled = document.getElementById('chkFollowAlertsEnabled');
 const chkTwitchFollowAlerts = document.getElementById('chkTwitchFollowAlerts');
 const chkKickFollowAlerts = document.getElementById('chkKickFollowAlerts');
 const chkFollowAlertTts = document.getElementById('chkFollowAlertTts');
+const chkFollowAlertMinimalUi = document.getElementById('chkFollowAlertMinimalUi');
 const chkFollowAlertObsOnly = document.getElementById('chkFollowAlertObsOnly');
 const chkFollowAlertShowInChat = document.getElementById('chkFollowAlertShowInChat');
 const chkFollowAlertAutoPopup = document.getElementById('chkFollowAlertAutoPopup');
@@ -161,6 +178,31 @@ const btnClearAlertImage = document.getElementById('btnClearAlertImage');
 const inputFollowAlertSound = document.getElementById('inputFollowAlertSound');
 const btnBrowseAlertSound = document.getElementById('btnBrowseAlertSound');
 const btnClearAlertSound = document.getElementById('btnClearAlertSound');
+
+// Channel Raid Alerts inputs
+const btnTestTwitchRaid = document.getElementById('btnTestTwitchRaid');
+const btnTestKickRaid = document.getElementById('btnTestKickRaid');
+const chkRaidAlertsEnabled = document.getElementById('chkRaidAlertsEnabled');
+const chkTwitchRaidAlerts = document.getElementById('chkTwitchRaidAlerts');
+const chkKickRaidAlerts = document.getElementById('chkKickRaidAlerts');
+const chkRaidAlertTts = document.getElementById('chkRaidAlertTts');
+const chkRaidAlertMinimalUi = document.getElementById('chkRaidAlertMinimalUi');
+const chkRaidAlertObsOnly = document.getElementById('chkRaidAlertObsOnly');
+const chkRaidAlertShowInChat = document.getElementById('chkRaidAlertShowInChat');
+const inputRaidAlertTemplate = document.getElementById('inputRaidAlertTemplate');
+const sliderRaidAlertVolume = document.getElementById('sliderRaidAlertVolume');
+const valRaidAlertVolume = document.getElementById('valRaidAlertVolume');
+const sliderRaidAlertDuration = document.getElementById('sliderRaidAlertDuration');
+const inputRaidAlertDurationSec = document.getElementById('inputRaidAlertDurationSec');
+const valRaidAlertDuration = document.getElementById('valRaidAlertDuration');
+const chkRaidAlertPlayFullVideo = document.getElementById('chkRaidAlertPlayFullVideo');
+const inputRaidAlertImage = document.getElementById('inputRaidAlertImage');
+const btnBrowseRaidImage = document.getElementById('btnBrowseRaidImage');
+const btnClearRaidImage = document.getElementById('btnClearRaidImage');
+const inputRaidAlertSound = document.getElementById('inputRaidAlertSound');
+const btnBrowseRaidSound = document.getElementById('btnBrowseRaidSound');
+const btnClearRaidSound = document.getElementById('btnClearRaidSound');
+
 const inputObsAlertUrl = document.getElementById('inputObsAlertUrl');
 const btnCopyObsUrl = document.getElementById('btnCopyObsUrl');
 const btnOpenObsWindow = document.getElementById('btnOpenObsWindow');
@@ -193,6 +235,10 @@ const valTtsVolume = document.getElementById('valTtsVolume');
 const sliderTtsRate = document.getElementById('sliderTtsRate');
 const valTtsRate = document.getElementById('valTtsRate');
 const chkTtsReadAuthor = document.getElementById('chkTtsReadAuthor');
+
+const btnRecordHideOverlayHotkey = document.getElementById('btnRecordHideOverlayHotkey');
+const labelHideOverlayHotkey = document.getElementById('labelHideOverlayHotkey');
+const btnTriggerHideOverlayNow = document.getElementById('btnTriggerHideOverlayNow');
 
 const btnRecordHideHotkey = document.getElementById('btnRecordHideHotkey');
 const labelHideHotkey = document.getElementById('labelHideHotkey');
@@ -379,7 +425,13 @@ function playAlertSoundToCompletion(soundUrl, volume) {
 async function handleIncomingFollowAlert(alert) {
   if (!alert) return;
 
-  const isObsOnly = Boolean(alert.obsOnly ?? currentSettings.followAlertObsOnly);
+  const isRaid = alert.alertType === 'raid';
+  const isObsOnly = Boolean(
+    alert.obsOnly ?? (isRaid ? currentSettings.raidAlertObsOnly : currentSettings.followAlertObsOnly)
+  );
+  const isMinimal = Boolean(
+    alert.minimalUi ?? (isRaid ? currentSettings.raidAlertMinimalUi : currentSettings.followAlertMinimalUi)
+  );
 
   // 1. Show in-overlay popup banner ONLY if not in OBS-Browser-Only mode
   if (followAlertBanner) {
@@ -388,15 +440,21 @@ async function handleIncomingFollowAlert(alert) {
       followAlertMedia.innerHTML = '';
     } else {
       const isKick = alert.platform === 'kick';
-      const playFullVideo = Boolean(alert.playFullVideo ?? currentSettings.followAlertPlayFullVideo);
-      const loopAttr = playFullVideo ? '' : ' loop';
+      const playFullVideo = Boolean(
+        alert.playFullVideo ?? (isRaid ? currentSettings.raidAlertPlayFullVideo : currentSettings.followAlertPlayFullVideo)
+      );
 
       followAlertBanner.classList.toggle('kick-theme', isKick);
-      followAlertPlatformTag.textContent = isKick
+      followAlertBanner.classList.toggle('minimal-ui', isMinimal);
+      followAlertPlatformTag.textContent = isRaid
+        ? isKick
+          ? 'KICK CHANNEL RAID'
+          : 'TWITCH CHANNEL RAID'
+        : isKick
         ? 'KICK NEW FOLLOWER'
         : 'TWITCH NEW FOLLOWER';
-      followAlertUser.textContent = alert.username || 'New Follower';
-      followAlertSub.textContent = alert.text || 'just followed!';
+      followAlertUser.textContent = alert.username || (isRaid ? 'Channel Raid' : 'New Follower');
+      followAlertSub.textContent = alert.text || (isRaid ? 'is raiding!' : 'just followed!');
 
       followAlertMedia.replaceChildren();
       if (alert.imageUrl && (/^https?:\/\//i.test(alert.imageUrl) || /^data:image\//i.test(alert.imageUrl))) {
@@ -412,16 +470,21 @@ async function handleIncomingFollowAlert(alert) {
         } else {
           const img = document.createElement('img');
           img.src = alert.imageUrl;
-          img.alt = 'Follow Alert';
+          img.alt = isRaid ? 'Raid Alert' : 'Follow Alert';
           followAlertMedia.appendChild(img);
         }
       } else {
-        followAlertMedia.innerHTML = `
-          <div class="follow-alert-default-star">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-          </div>`;
+        followAlertMedia.innerHTML = isRaid
+          ? `<div class="follow-alert-default-star">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            </div>`
+          : `<div class="follow-alert-default-star">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            </div>`;
       }
 
       followAlertBanner.classList.remove('hidden');
@@ -487,6 +550,10 @@ function applyAppearanceToDOM(s) {
     settingsModal.classList.add('hidden');
     btnSettings.classList.remove('active');
   }
+
+  const hideOverlayKey = s.hideOverlayHotkey || 'Alt+O';
+  if (labelHideOverlayHotkey) labelHideOverlayHotkey.textContent = hideOverlayKey;
+  if (emptyOverlayHotkeyHint) emptyOverlayHotkeyHint.textContent = hideOverlayKey;
 
   const hideKey = s.hideTopHotkey || 'Alt+H';
   restoreHotkeyLabel.textContent = hideKey;
@@ -558,11 +625,12 @@ function syncControlsFromSettings(s) {
     inputKickChatroomId.value = s.kickChatroomId || '';
   }
 
-  // Follower Alert settings
+  // Follower / Donation Alert settings
   if (chkFollowAlertsEnabled) chkFollowAlertsEnabled.checked = s.followAlertsEnabled !== false;
   if (chkTwitchFollowAlerts) chkTwitchFollowAlerts.checked = s.twitchFollowAlerts !== false;
   if (chkKickFollowAlerts) chkKickFollowAlerts.checked = s.kickFollowAlerts !== false;
   if (chkFollowAlertTts) chkFollowAlertTts.checked = s.followAlertTtsEnabled !== false;
+  if (chkFollowAlertMinimalUi) chkFollowAlertMinimalUi.checked = Boolean(s.followAlertMinimalUi);
   if (chkFollowAlertObsOnly) chkFollowAlertObsOnly.checked = Boolean(s.followAlertObsOnly);
   if (chkFollowAlertShowInChat) chkFollowAlertShowInChat.checked = s.followAlertShowInChat !== false;
   if (chkFollowAlertAutoPopup) chkFollowAlertAutoPopup.checked = Boolean(s.followAlertAutoPopupWindow);
@@ -589,6 +657,39 @@ function syncControlsFromSettings(s) {
   }
   if (inputFollowAlertSound && document.activeElement !== inputFollowAlertSound) {
     inputFollowAlertSound.value = s.followAlertSoundDisplay || s.followAlertSoundPath || '';
+  }
+
+  // Channel Raid Alert settings
+  if (chkRaidAlertsEnabled) chkRaidAlertsEnabled.checked = s.raidAlertsEnabled !== false;
+  if (chkTwitchRaidAlerts) chkTwitchRaidAlerts.checked = s.twitchRaidAlerts !== false;
+  if (chkKickRaidAlerts) chkKickRaidAlerts.checked = s.kickRaidAlerts !== false;
+  if (chkRaidAlertTts) chkRaidAlertTts.checked = s.raidAlertTtsEnabled !== false;
+  if (chkRaidAlertMinimalUi) chkRaidAlertMinimalUi.checked = Boolean(s.raidAlertMinimalUi);
+  if (chkRaidAlertObsOnly) chkRaidAlertObsOnly.checked = Boolean(s.raidAlertObsOnly);
+  if (chkRaidAlertShowInChat) chkRaidAlertShowInChat.checked = s.raidAlertShowInChat !== false;
+  if (chkRaidAlertPlayFullVideo) chkRaidAlertPlayFullVideo.checked = Boolean(s.raidAlertPlayFullVideo);
+
+  if (inputRaidAlertTemplate && document.activeElement !== inputRaidAlertTemplate) {
+    inputRaidAlertTemplate.value = s.raidAlertTemplate || '{user} is raiding with {viewers} viewers on {platform}!';
+  }
+  if (sliderRaidAlertVolume && valRaidAlertVolume) {
+    const raidVolPct = Math.round((s.raidAlertVolume ?? 0.85) * 100);
+    sliderRaidAlertVolume.value = String(raidVolPct);
+    valRaidAlertVolume.textContent = `${raidVolPct}%`;
+  }
+  if (sliderRaidAlertDuration && valRaidAlertDuration) {
+    const raidDurSec = Number(s.raidAlertDuration) || 8;
+    sliderRaidAlertDuration.value = String(Math.min(60, raidDurSec));
+    if (inputRaidAlertDurationSec && document.activeElement !== inputRaidAlertDurationSec) {
+      inputRaidAlertDurationSec.value = String(raidDurSec);
+    }
+    valRaidAlertDuration.textContent = s.raidAlertPlayFullVideo ? `Full Video (${raidDurSec}s fallback)` : `${raidDurSec}s`;
+  }
+  if (inputRaidAlertImage && document.activeElement !== inputRaidAlertImage) {
+    inputRaidAlertImage.value = s.raidAlertImageDisplay || s.raidAlertImagePath || '';
+  }
+  if (inputRaidAlertSound && document.activeElement !== inputRaidAlertSound) {
+    inputRaidAlertSound.value = s.raidAlertSoundDisplay || s.raidAlertSoundPath || '';
   }
 
   const bgPct = Math.round((s.bgOpacity ?? 0) * 100);
@@ -874,6 +975,9 @@ function openSettingsTab(tabId = 'tabConnect') {
   tabPanes.forEach((pane) => {
     pane.classList.toggle('active', pane.id === tabId);
   });
+  if (window.overlayAPI && window.overlayAPI.focusWindow) {
+    window.overlayAPI.focusWindow();
+  }
 }
 
 btnSettings.addEventListener('click', () => {
@@ -957,6 +1061,12 @@ if (btnEmptyHideTop) {
 btnRestoreTopBar.addEventListener('click', () => {
   window.overlayAPI.toggleTopBar(false);
 });
+
+if (btnTriggerHideOverlayNow) {
+  btnTriggerHideOverlayNow.addEventListener('click', () => {
+    window.overlayAPI.toggleOverlayVisibility(true);
+  });
+}
 
 btnTriggerHideNow.addEventListener('click', () => {
   window.overlayAPI.toggleTopBar(true);
@@ -1127,6 +1237,18 @@ if (chkFollowAlertTts) {
   });
 }
 
+if (chkFollowAlertMinimalUi) {
+  chkFollowAlertMinimalUi.addEventListener('change', () => {
+    currentSettings.followAlertMinimalUi = chkFollowAlertMinimalUi.checked;
+    window.overlayAPI.saveSettings({ followAlertMinimalUi: chkFollowAlertMinimalUi.checked });
+    showToast(
+      chkFollowAlertMinimalUi.checked
+        ? 'Minimal Alert UI enabled — Showing only MP4/media & text underneath'
+        : 'Full Alert Card UI enabled'
+    );
+  });
+}
+
 if (chkFollowAlertObsOnly) {
   chkFollowAlertObsOnly.addEventListener('change', () => {
     currentSettings.followAlertObsOnly = chkFollowAlertObsOnly.checked;
@@ -1276,6 +1398,207 @@ if (btnClearAlertSound) {
     currentSettings.followAlertSoundPath = '';
     currentSettings.followAlertSoundDisplay = '';
     window.overlayAPI.saveSettings({ followAlertSoundPath: '' });
+    showToast('Reset to default celebration chime');
+  });
+}
+
+// Channel Raid Alerts Controls (Twitch & Kick)
+if (btnTestTwitchRaid) {
+  btnTestTwitchRaid.addEventListener('click', () => {
+    window.overlayAPI.testRaidAlert('twitch');
+    showToast('🚨 Triggered Twitch Channel Raid Alert!');
+  });
+}
+
+if (btnTestKickRaid) {
+  btnTestKickRaid.addEventListener('click', () => {
+    window.overlayAPI.testRaidAlert('kick');
+    showToast('🚨 Triggered Kick Channel Raid Alert!');
+  });
+}
+
+if (chkRaidAlertsEnabled) {
+  chkRaidAlertsEnabled.addEventListener('change', () => {
+    currentSettings.raidAlertsEnabled = chkRaidAlertsEnabled.checked;
+    window.overlayAPI.saveSettings({ raidAlertsEnabled: chkRaidAlertsEnabled.checked });
+  });
+}
+
+if (chkTwitchRaidAlerts) {
+  chkTwitchRaidAlerts.addEventListener('change', () => {
+    currentSettings.twitchRaidAlerts = chkTwitchRaidAlerts.checked;
+    window.overlayAPI.saveSettings({ twitchRaidAlerts: chkTwitchRaidAlerts.checked });
+  });
+}
+
+if (chkKickRaidAlerts) {
+  chkKickRaidAlerts.addEventListener('change', () => {
+    currentSettings.kickRaidAlerts = chkKickRaidAlerts.checked;
+    window.overlayAPI.saveSettings({ kickRaidAlerts: chkKickRaidAlerts.checked });
+  });
+}
+
+if (chkRaidAlertTts) {
+  chkRaidAlertTts.addEventListener('change', () => {
+    currentSettings.raidAlertTtsEnabled = chkRaidAlertTts.checked;
+    window.overlayAPI.saveSettings({ raidAlertTtsEnabled: chkRaidAlertTts.checked });
+  });
+}
+
+if (chkRaidAlertMinimalUi) {
+  chkRaidAlertMinimalUi.addEventListener('change', () => {
+    currentSettings.raidAlertMinimalUi = chkRaidAlertMinimalUi.checked;
+    window.overlayAPI.saveSettings({ raidAlertMinimalUi: chkRaidAlertMinimalUi.checked });
+    showToast(
+      chkRaidAlertMinimalUi.checked
+        ? 'Minimal Raid UI enabled — Showing only MP4/media & text underneath'
+        : 'Full Raid Card UI enabled'
+    );
+  });
+}
+
+if (chkRaidAlertObsOnly) {
+  chkRaidAlertObsOnly.addEventListener('change', () => {
+    currentSettings.raidAlertObsOnly = chkRaidAlertObsOnly.checked;
+    if (chkRaidAlertObsOnly.checked && followAlertBanner) {
+      followAlertBanner.classList.add('hidden');
+      followAlertMedia.innerHTML = '';
+    }
+    window.overlayAPI.saveSettings({ raidAlertObsOnly: chkRaidAlertObsOnly.checked });
+    showToast(
+      chkRaidAlertObsOnly.checked
+        ? 'OBS Browser Only enabled for Raid Alerts'
+        : 'Overlay raid alert display enabled'
+    );
+  });
+}
+
+if (chkRaidAlertShowInChat) {
+  chkRaidAlertShowInChat.addEventListener('change', () => {
+    currentSettings.raidAlertShowInChat = chkRaidAlertShowInChat.checked;
+    window.overlayAPI.saveSettings({ raidAlertShowInChat: chkRaidAlertShowInChat.checked });
+  });
+}
+
+if (inputRaidAlertTemplate) {
+  inputRaidAlertTemplate.addEventListener('change', () => {
+    const val = inputRaidAlertTemplate.value.trim() || '{user} is raiding with {viewers} viewers on {platform}!';
+    currentSettings.raidAlertTemplate = val;
+    window.overlayAPI.saveSettings({ raidAlertTemplate: val });
+  });
+}
+
+if (sliderRaidAlertVolume) {
+  sliderRaidAlertVolume.addEventListener('input', () => {
+    const val = Number(sliderRaidAlertVolume.value) / 100;
+    valRaidAlertVolume.textContent = `${sliderRaidAlertVolume.value}%`;
+    currentSettings.raidAlertVolume = val;
+    window.overlayAPI.saveSettings({ raidAlertVolume: val });
+  });
+}
+
+function updateRaidAlertDuration(rawVal) {
+  const val = Math.max(1, Math.min(300, Math.round(Number(rawVal) || 8)));
+  currentSettings.raidAlertDuration = val;
+  if (sliderRaidAlertDuration) {
+    sliderRaidAlertDuration.value = String(Math.min(60, val));
+  }
+  if (inputRaidAlertDurationSec && document.activeElement !== inputRaidAlertDurationSec) {
+    inputRaidAlertDurationSec.value = String(val);
+  }
+  if (valRaidAlertDuration) {
+    valRaidAlertDuration.textContent = currentSettings.raidAlertPlayFullVideo
+      ? `Full Video (${val}s fallback)`
+      : `${val}s`;
+  }
+  window.overlayAPI.saveSettings({ raidAlertDuration: val });
+}
+
+if (sliderRaidAlertDuration) {
+  sliderRaidAlertDuration.addEventListener('input', () => {
+    const val = Number(sliderRaidAlertDuration.value);
+    if (inputRaidAlertDurationSec) inputRaidAlertDurationSec.value = String(val);
+    updateRaidAlertDuration(val);
+  });
+}
+
+if (inputRaidAlertDurationSec) {
+  inputRaidAlertDurationSec.addEventListener('change', () => {
+    const val = Math.max(1, Math.min(300, Math.round(Number(inputRaidAlertDurationSec.value) || 8)));
+    inputRaidAlertDurationSec.value = String(val);
+    updateRaidAlertDuration(val);
+  });
+}
+
+if (chkRaidAlertPlayFullVideo) {
+  chkRaidAlertPlayFullVideo.addEventListener('change', () => {
+    currentSettings.raidAlertPlayFullVideo = chkRaidAlertPlayFullVideo.checked;
+    if (valRaidAlertDuration) {
+      const dur = currentSettings.raidAlertDuration || 8;
+      valRaidAlertDuration.textContent = chkRaidAlertPlayFullVideo.checked
+        ? `Full Video (${dur}s fallback)`
+        : `${dur}s`;
+    }
+    window.overlayAPI.saveSettings({ raidAlertPlayFullVideo: chkRaidAlertPlayFullVideo.checked });
+  });
+}
+
+if (inputRaidAlertImage) {
+  inputRaidAlertImage.addEventListener('change', () => {
+    const val = inputRaidAlertImage.value.trim();
+    if (val === '' || /^https?:\/\//i.test(val) || /^data:/i.test(val) || /^[a-zA-Z]:[\\/]/.test(val)) {
+      window.overlayAPI.saveSettings({ raidAlertImagePath: val });
+    }
+  });
+}
+
+if (btnBrowseRaidImage) {
+  btnBrowseRaidImage.addEventListener('click', async () => {
+    const res = await window.overlayAPI.pickAlertMediaFile('raid-image');
+    if (res && !res.canceled && res.fileName) {
+      inputRaidAlertImage.value = res.fileName;
+      currentSettings.raidAlertImageDisplay = res.fileName;
+      showToast('Custom raid MP4/GIF/image saved!');
+    }
+  });
+}
+
+if (btnClearRaidImage) {
+  btnClearRaidImage.addEventListener('click', () => {
+    inputRaidAlertImage.value = '';
+    currentSettings.raidAlertImagePath = '';
+    currentSettings.raidAlertImageDisplay = '';
+    window.overlayAPI.saveSettings({ raidAlertImagePath: '' });
+    showToast('Reset to default animated raid graphic');
+  });
+}
+
+if (inputRaidAlertSound) {
+  inputRaidAlertSound.addEventListener('change', () => {
+    const val = inputRaidAlertSound.value.trim();
+    if (val === '' || /^https?:\/\//i.test(val) || /^data:/i.test(val) || /^[a-zA-Z]:[\\/]/.test(val)) {
+      window.overlayAPI.saveSettings({ raidAlertSoundPath: val });
+    }
+  });
+}
+
+if (btnBrowseRaidSound) {
+  btnBrowseRaidSound.addEventListener('click', async () => {
+    const res = await window.overlayAPI.pickAlertMediaFile('raid-sound');
+    if (res && !res.canceled && res.fileName) {
+      inputRaidAlertSound.value = res.fileName;
+      currentSettings.raidAlertSoundDisplay = res.fileName;
+      showToast('Custom raid MP3/sound saved!');
+    }
+  });
+}
+
+if (btnClearRaidSound) {
+  btnClearRaidSound.addEventListener('click', () => {
+    inputRaidAlertSound.value = '';
+    currentSettings.raidAlertSoundPath = '';
+    currentSettings.raidAlertSoundDisplay = '';
+    window.overlayAPI.saveSettings({ raidAlertSoundPath: '' });
     showToast('Reset to default celebration chime');
   });
 }
@@ -1445,33 +1768,69 @@ btnResetWindow.addEventListener('click', async () => {
 // Interactive Hotkey Recorder
 function formatKeyEventToAccelerator(e) {
   const modifiers = [];
-  if (e.ctrlKey) modifiers.push('CommandOrControl');
+  if (e.ctrlKey || e.metaKey) modifiers.push('CommandOrControl');
   if (e.altKey) modifiers.push('Alt');
   if (e.shiftKey) modifiers.push('Shift');
 
-  const ignoredKeys = new Set(['Control', 'Alt', 'Shift', 'Meta', 'OS']);
+  const ignoredKeys = new Set(['Control', 'Alt', 'Shift', 'Meta', 'OS', 'Dead']);
   if (ignoredKeys.has(e.key)) return null;
 
-  let mainKey = e.key;
+  const codeMap = {
+    Numpad0: 'num0',
+    Numpad1: 'num1',
+    Numpad2: 'num2',
+    Numpad3: 'num3',
+    Numpad4: 'num4',
+    Numpad5: 'num5',
+    Numpad6: 'num6',
+    Numpad7: 'num7',
+    Numpad8: 'num8',
+    Numpad9: 'num9',
+    NumpadDecimal: 'numdec',
+    NumpadAdd: 'numadd',
+    NumpadSubtract: 'numsub',
+    NumpadMultiply: 'nummult',
+    NumpadDivide: 'numdiv',
+    Backquote: '`',
+    Minus: '-',
+    Equal: '=',
+    BracketLeft: '[',
+    BracketRight: ']',
+    Backslash: '\\',
+    Semicolon: ';',
+    Quote: "'",
+    Comma: ',',
+    Period: '.',
+    Slash: '/'
+  };
+
+  let mainKey = codeMap[e.code] || e.key;
   if (mainKey === ' ') mainKey = 'Space';
-  else if (mainKey.length === 1) mainKey = mainKey.toUpperCase();
   else if (mainKey === 'ArrowUp') mainKey = 'Up';
   else if (mainKey === 'ArrowDown') mainKey = 'Down';
   else if (mainKey === 'ArrowLeft') mainKey = 'Left';
   else if (mainKey === 'ArrowRight') mainKey = 'Right';
-
-  // Require at least one modifier unless it's a Function key (F1-F12)
-  if (modifiers.length === 0 && !/^F([1-9]|1[0-2])$/i.test(mainKey)) {
-    return null;
-  }
+  else if (mainKey === 'Enter') mainKey = 'Return';
+  else if (mainKey.length === 1) mainKey = mainKey.toUpperCase();
 
   return [...modifiers, mainKey].join('+');
 }
 
 function clearHotkeyRecordingUI() {
+  if (btnRecordHideOverlayHotkey) btnRecordHideOverlayHotkey.classList.remove('recording');
   btnRecordHideHotkey.classList.remove('recording');
   btnRecordLockHotkey.classList.remove('recording');
   if (btnRecordTtsHotkey) btnRecordTtsHotkey.classList.remove('recording');
+}
+
+if (btnRecordHideOverlayHotkey) {
+  btnRecordHideOverlayHotkey.addEventListener('click', () => {
+    recordingTarget = 'hideOverlayHotkey';
+    clearHotkeyRecordingUI();
+    btnRecordHideOverlayHotkey.classList.add('recording');
+    labelHideOverlayHotkey.textContent = 'Press any key or combo (Esc to cancel)...';
+    if (window.overlayAPI && window.overlayAPI.focusWindow) window.overlayAPI.focusWindow();
+  });
 }
 
 if (btnRecordTtsHotkey) {
@@ -1479,7 +1838,8 @@ if (btnRecordTtsHotkey) {
     recordingTarget = 'ttsHotkey';
     clearHotkeyRecordingUI();
     btnRecordTtsHotkey.classList.add('recording');
-    labelTtsHotkey.textContent = 'Press keys (e.g. Alt+T or F7)...';
+    labelTtsHotkey.textContent = 'Press any key or combo (Esc to cancel)...';
+    if (window.overlayAPI && window.overlayAPI.focusWindow) window.overlayAPI.focusWindow();
   });
 }
 
@@ -1487,18 +1847,41 @@ btnRecordHideHotkey.addEventListener('click', () => {
   recordingTarget = 'hideTopHotkey';
   clearHotkeyRecordingUI();
   btnRecordHideHotkey.classList.add('recording');
-  labelHideHotkey.textContent = 'Press keys (e.g. Alt+H or F8)...';
+  labelHideHotkey.textContent = 'Press any key or combo (Esc to cancel)...';
+  if (window.overlayAPI && window.overlayAPI.focusWindow) window.overlayAPI.focusWindow();
 });
 
 btnRecordLockHotkey.addEventListener('click', () => {
   recordingTarget = 'clickThroughHotkey';
   clearHotkeyRecordingUI();
   btnRecordLockHotkey.classList.add('recording');
-  labelLockHotkey.textContent = 'Press keys (e.g. Alt+L or F9)...';
+  labelLockHotkey.textContent = 'Press any key or combo (Esc to cancel)...';
+  if (window.overlayAPI && window.overlayAPI.focusWindow) window.overlayAPI.focusWindow();
 });
 
 window.addEventListener('keydown', (e) => {
-  if (!recordingTarget) return;
+  if (!recordingTarget) {
+    const tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const pressed = formatKeyEventToAccelerator(e);
+    if (!pressed) return;
+    const pLower = pressed.toLowerCase();
+    const norm = (k) => (k || '').trim().replace(/^Ctrl\+/i, 'CommandOrControl+').toLowerCase();
+    if (pLower === norm(currentSettings.hideOverlayHotkey || 'Alt+O') || pLower === 'f10') {
+      e.preventDefault();
+      window.overlayAPI.toggleOverlayVisibility();
+    } else if (pLower === norm(currentSettings.hideTopHotkey || 'Alt+H') || pLower === 'f8') {
+      e.preventDefault();
+      window.overlayAPI.toggleTopBar();
+    } else if (pLower === norm(currentSettings.clickThroughHotkey || 'Alt+L') || pLower === 'f9') {
+      e.preventDefault();
+      window.overlayAPI.toggleClickThrough();
+    } else if (pLower === norm(currentSettings.ttsHotkey || 'Alt+T') || pLower === 'f7') {
+      e.preventDefault();
+      window.overlayAPI.toggleTts();
+    }
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
 
@@ -1587,6 +1970,7 @@ let isResizingWindow = false;
 
 (function setupSmartClickThrough() {
   let lastIgnoreState = null;
+  let lastForceState = null;
   let hoveredMsgEl = null;
   let hoveredTtsBtn = null;
   let hoveredDelBtn = null;
@@ -1594,6 +1978,7 @@ let isResizingWindow = false;
   const INTERACTIVE_SELECTOR = [
     '#topBar',
     '#settingsModal',
+    '#topRestoreBar',
     '.msg-tts-btn',
     '.msg-delete-btn',
     '.restore-pill',
@@ -1601,6 +1986,22 @@ let isResizingWindow = false;
     '.scroll-bottom-btn',
     '.resize-handle'
   ].join(', ');
+
+  const MENU_FORCE_SELECTOR = [
+    '#topBar',
+    '#settingsModal',
+    '#topRestoreBar',
+    '.restore-pill',
+    '.empty-actions button'
+  ].join(', ');
+
+  const applyMouseState = (shouldIgnore, forceInteractive) => {
+    if (shouldIgnore !== lastIgnoreState || forceInteractive !== lastForceState) {
+      lastIgnoreState = shouldIgnore;
+      lastForceState = forceInteractive;
+      window.overlayAPI.setIgnoreMouse(shouldIgnore, forceInteractive);
+    }
+  };
 
   window.addEventListener('mousemove', (e) => {
     const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -1630,14 +2031,12 @@ let isResizingWindow = false;
     const inRestoreBar = Boolean(el && el.closest('#topRestoreBar'));
     topRestoreBar.classList.toggle('js-hover', inRestoreBar);
 
+    const isSettingsOpen = !settingsModal.classList.contains('hidden') || Boolean(recordingTarget);
+    const isOverMenu = isSettingsOpen || Boolean(el && el.closest(MENU_FORCE_SELECTOR));
     const isOverInteractive =
-      isResizingWindow || Boolean(el && el.closest(INTERACTIVE_SELECTOR));
-    const shouldIgnore = !isOverInteractive;
+      isOverMenu || isResizingWindow || Boolean(el && el.closest(INTERACTIVE_SELECTOR));
 
-    if (shouldIgnore !== lastIgnoreState) {
-      lastIgnoreState = shouldIgnore;
-      window.overlayAPI.setIgnoreMouse(shouldIgnore);
-    }
+    applyMouseState(!isOverInteractive, isOverMenu);
   });
 
   window.addEventListener('mouseleave', () => {
@@ -1654,9 +2053,9 @@ let isResizingWindow = false;
       hoveredDelBtn = null;
     }
     topRestoreBar.classList.remove('js-hover');
-    if (!isResizingWindow && lastIgnoreState !== true) {
-      lastIgnoreState = true;
-      window.overlayAPI.setIgnoreMouse(true);
+    const isSettingsOpen = !settingsModal.classList.contains('hidden') || Boolean(recordingTarget);
+    if (!isResizingWindow && !isSettingsOpen) {
+      applyMouseState(true, false);
     }
   });
 })();
@@ -1682,6 +2081,15 @@ window.overlayAPI.onTopBarToggled(({ topBarHidden, hotkey }) => {
     showToast(`Top of window hidden — Press ${currentSettings.hideTopHotkey} to show`);
   } else {
     showToast('Top of window visible');
+  }
+});
+
+window.overlayAPI.onOverlayVisibilityToggled(({ overlayHidden, hotkey }) => {
+  if (hotkey) currentSettings.hideOverlayHotkey = hotkey;
+  document.body.classList.toggle('overlay-hidden', Boolean(overlayHidden));
+  applyAppearanceToDOM(currentSettings);
+  if (!overlayHidden) {
+    showToast(`Overlay visible (${currentSettings.hideOverlayHotkey} or F10 to hide)`);
   }
 });
 
