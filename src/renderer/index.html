@@ -74,6 +74,14 @@
 
       <!-- Top Bar Action Controls -->
       <div class="top-bar-actions">
+        <button id="btnOpenPoll" class="icon-btn poll-top-btn" title="Start or Manage Live Chat Poll">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </button>
+
         <button id="btnTtsToggle" class="icon-btn tts-top-btn" title="Toggle Chat TTS (Alt+T)">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -133,6 +141,30 @@
 
     <!-- Main Chat Feed -->
     <main id="chatViewport" class="chat-viewport">
+      <!-- Live Chat Poll Overlay Widget -->
+      <div id="pollOverlayWidget" class="poll-overlay-widget hidden">
+        <div class="poll-widget-header">
+          <div class="poll-widget-title-wrap">
+            <span id="pollWidgetBadge" class="poll-widget-badge">📊 LIVE POLL</span>
+            <span id="pollWidgetQuestion" class="poll-widget-question">Chat Poll — Type a number to vote!</span>
+          </div>
+          <div class="poll-widget-meta">
+            <span id="pollWidgetTimer" class="poll-widget-timer">01:00</span>
+            <button id="btnOverlayEndPoll" class="poll-action-btn" title="End Poll Now">End</button>
+            <button id="btnOverlayDismissPoll" class="poll-action-btn poll-dismiss-btn hidden" title="Hide Poll from Overlay">✕</button>
+          </div>
+        </div>
+        <div id="pollWidgetWarning" class="poll-widget-warning hidden"></div>
+        <div id="pollWidgetOptions" class="poll-widget-options"></div>
+        <div class="poll-widget-footer">
+          <span id="pollWidgetInstruction">Type <kbd>1</kbd>, <kbd>2</kbd>... in chat to vote (1 vote per viewer)</span>
+          <span id="pollWidgetTotalVotes" class="poll-widget-total">0 votes</span>
+        </div>
+        <div id="pollWidgetProgressWrap" class="poll-widget-progress-wrap">
+          <div id="pollWidgetProgressBar" class="poll-widget-progress-bar"></div>
+        </div>
+      </div>
+
       <div id="emptyState" class="empty-state">
         <div class="empty-icons">
           <span class="badge-preview twitch-badge-preview" title="Twitch">
@@ -178,6 +210,7 @@
       <div class="settings-header">
         <div class="settings-tabs">
           <button class="tab-btn active" data-tab="tabConnect">Channels</button>
+          <button class="tab-btn" data-tab="tabPolls">📊 Polls</button>
           <button class="tab-btn" data-tab="tabAlerts">Alerts &amp; Raids</button>
           <button class="tab-btn" data-tab="tabAppearance">Appearance</button>
           <button class="tab-btn" data-tab="tabHotkeys">TTS &amp; Hotkeys</button>
@@ -761,6 +794,97 @@
           <div class="settings-footer-actions split">
             <button id="btnClearChat" class="secondary-btn">Clear Chat Feed</button>
             <button id="btnResetWindow" class="secondary-btn">Reset Window Size &amp; Pos</button>
+          </div>
+        </div>
+
+        <!-- TAB 5: LIVE CHAT POLLS -->
+        <div id="tabPolls" class="tab-pane">
+          <div class="platform-card poll-card-settings">
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-icon poll-icon-box">📊</span>
+                <div>
+                  <h4>Live Chat Poll</h4>
+                  <span id="pollBuilderStatusText" class="status-subtext">No active poll &bull; Viewers vote by typing option number (1 vote per viewer)</span>
+                </div>
+              </div>
+              <button id="btnSimulatePollVotes" class="ghost-btn" title="Simulate viewer votes in chat to test the active poll">
+                🧪 Test Votes
+              </button>
+            </div>
+
+            <!-- Warning Banner when Poll Options Cover Too Much of the Chat Window -->
+            <div id="pollCoverageWarning" class="poll-coverage-warning hidden">
+              <span class="warn-icon">⚠️</span>
+              <span id="pollCoverageWarningText">
+                Warning: Having this many poll options covers a large portion of the chat window! The poll widget height is capped so chat stays visible, or you can remove options / resize the window taller.
+              </span>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label for="inputPollQuestion">Poll Question / Title</label>
+              </div>
+              <input
+                id="inputPollQuestion"
+                type="text"
+                value="What should we do next?"
+                placeholder="Ask chat a question (e.g. What game should we play next?)"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label>Poll Duration</label>
+                <span id="valPollDurationSummary" class="setting-val">60 Seconds</span>
+              </div>
+
+              <label class="checkbox-row">
+                <input id="chkPollIndefinite" type="checkbox" />
+                <span>♾️ Indefinite Poll (No timer &mdash; runs until you end it manually)</span>
+              </label>
+
+              <div id="pollDurationInputsRow" class="poll-duration-row">
+                <input
+                  id="inputPollDurationValue"
+                  type="number"
+                  min="1"
+                  max="999"
+                  step="1"
+                  value="60"
+                  class="duration-num-input"
+                  title="Poll duration value"
+                />
+                <select id="selectPollDurationUnit" class="setting-select poll-unit-select">
+                  <option value="seconds" selected>Seconds</option>
+                  <option value="minutes">Minutes</option>
+                </select>
+                <div class="poll-preset-btns">
+                  <button type="button" class="ghost-btn poll-preset-btn" data-val="30" data-unit="seconds">30s</button>
+                  <button type="button" class="ghost-btn poll-preset-btn" data-val="1" data-unit="minutes">1m</button>
+                  <button type="button" class="ghost-btn poll-preset-btn" data-val="2" data-unit="minutes">2m</button>
+                  <button type="button" class="ghost-btn poll-preset-btn" data-val="5" data-unit="minutes">5m</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-label-row">
+                <label>Poll Options (Viewers type <kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd>... in chat)</label>
+                <span id="valPollOptionCount" class="setting-val">2 Options</span>
+              </div>
+              <div id="pollBuilderOptionsList" class="poll-builder-options-list"></div>
+              <button id="btnAddPollOption" type="button" class="secondary-btn full-width mt-6">
+                + Add Poll Option
+              </button>
+            </div>
+
+            <div class="settings-footer-actions split">
+              <button id="btnStartPoll" type="button" class="primary-btn">🚀 Start Poll</button>
+              <button id="btnEndPoll" type="button" class="secondary-btn" disabled>⏹️ End Poll Now</button>
+              <button id="btnClearPoll" type="button" class="disconnect-btn" disabled>🗑️ Hide Poll</button>
+            </div>
           </div>
         </div>
       </div>

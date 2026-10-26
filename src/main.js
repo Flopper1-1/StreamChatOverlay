@@ -523,6 +523,48 @@ function createOverlayWindow() {
             hasBooleanFlags: typeof s.hasTwitchOauthToken === 'boolean' && typeof s.hasYouTubeApiKey === 'boolean'
           }))
         `);
+        const pollVerifyCheck = await mainWindow.webContents.executeJavaScript(`(() => {
+          // 1. Test warning when too many options cover chat
+          window.pollController.setBuilderOptions(['Opt 1', 'Opt 2', 'Opt 3', 'Opt 4', 'Opt 5', 'Opt 6']);
+          const warningVisibleOnMany = !document.getElementById('pollCoverageWarning').classList.contains('hidden');
+
+          // 2. Start an indefinite poll with 3 options
+          window.pollController.startPoll({
+            question: 'What game next?',
+            indefinite: true,
+            options: ['Valorant', 'Minecraft', 'Elden Ring']
+          });
+          // Voter A votes for option 1
+          appendChatMessage({ id: 'v1', platform: 'twitch', author: 'VoterOne', text: '1' });
+          // Voter A tries to vote again for option 2 (must be blocked!)
+          appendChatMessage({ id: 'v2', platform: 'twitch', author: 'VoterOne', text: '2' });
+          // Voter A tries to vote again with uppercase name (must be blocked!)
+          appendChatMessage({ id: 'v3', platform: 'twitch', author: 'VOTERONE', text: '1' });
+          // Voter B votes for option 2
+          appendChatMessage({ id: 'v4', platform: 'youtube', author: 'VoterTwo', text: '2' });
+          // Voter C votes for option 1
+          appendChatMessage({ id: 'v5', platform: 'kick', author: 'VoterThree', text: '1' });
+
+          const pollState = window.pollController.getActivePoll();
+          const opt1Votes = pollState.options[0].votes;
+          const opt2Votes = pollState.options[1].votes;
+          const opt3Votes = pollState.options[2].votes;
+          const totalVotes = pollState.totalVotes;
+
+          window.pollController.endActivePoll(false);
+          const endedStatus = window.pollController.getActivePoll().status;
+          window.pollController.clearActivePoll();
+          window.pollController.setBuilderOptions(['Yes', 'No']);
+
+          return {
+            warningVisibleOnMany,
+            opt1Votes,
+            opt2Votes,
+            opt3Votes,
+            totalVotes,
+            endedStatus
+          };
+        })()`);
         toggleTopBar(true);
         await new Promise((r) => setTimeout(r, 200));
         const topHiddenAfter = await mainWindow.webContents.executeJavaScript(
@@ -541,6 +583,7 @@ function createOverlayWindow() {
           ...alertCheck,
           ...raidMinimalCheck,
           ...publicSettingsCheck,
+          ...pollVerifyCheck,
           topHiddenAfter,
           overlayHiddenAfter
         }));

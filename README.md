@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Flopper1-1/StreamChatOverlay/releases"><img src="https://img.shields.io/badge/Release-v1.1.0-9146FF?style=for-the-badge&logo=electron&logoColor=white" alt="Version 1.1.0"></a>
+  <a href="https://github.com/Flopper1-1/StreamChatOverlay/releases"><img src="https://img.shields.io/badge/Release-v1.2.0-9146FF?style=for-the-badge&logo=electron&logoColor=white" alt="Version 1.2.0"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-53FC18?style=for-the-badge&logoColor=black" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platforms-Twitch%20%7C%20YouTube%20%7C%20Kick-FF0000?style=for-the-badge" alt="Platforms">
   <img src="https://img.shields.io/badge/Security-DPAPI%20Encrypted-blue?style=for-the-badge&logo=windows" alt="DPAPI Encrypted">
@@ -20,6 +20,7 @@
  │ 📺 100% Frameless Transparent Canvas (Screen-Saver Z-Order)            │
  │ 💬 Multi-Platform: Twitch 🟣 + YouTube Live 🔴 + Kick.com 🟢             │
  │ 🎯 Smart Click-Through: Seamless gaming + hover-to-delete messages     │
+ │ 📊 Live Chat Polls: Numbered options, anti-duplicate voting & guard    │
  │ 🗣️ Keybindable Text-to-Speech (TTS) for incoming chat & follower alerts│
  │ 🎉 Follower, Donation & Channel Raid Alerts + OBS Browser Source       │
  │ 🎬 Minimal UI Mode: Display video/MP4 + text only with zero extra UI   │
@@ -34,6 +35,12 @@
   Zero window border, zero clunky titlebar, fully customizable background and message bubble opacity (0% to 100%).
 - **🎮 Smart Click-Through & Safe Interaction**:
   Clicks pass through directly into your games and desktop. Hovering over the top toolbar, settings, or restore strip immediately re-enables interactive controls so you never get locked out. Hovering any message reveals instant actions: **Read Aloud (TTS)** or **Delete Message** (`hover-to-delete`).
+- **📊 Live Chat Polls (Twitch, YouTube & Kick)**:
+  - **Unlimited Numbered Options**: Add as many custom options as you want; viewers vote in chat by typing the corresponding number (`1`, `2`, `3`, `#1`, etc.).
+  - **Anti-Duplicate Voting**: Viewers cannot vote more than once per poll.
+  - **Chat Coverage Guard**: Warns if having too many options will cover the chat, and caps the poll at 44% height with smooth internal scrolling so chat messages stay visible.
+  - **Flexible Duration**: Choose custom time limits in seconds or minutes with live countdown progress, or set to **Indefinite** and end manually anytime.
+  - **Interactive Overlay Card**: Live animated vote bars, leading/winner highlights, and quick End/Dismiss controls right on the overlay.
 - **🌐 3-in-1 Unified Chat Feed**:
   Simultaneously streams Twitch IRC, YouTube Live (with anti-duplicate history seeding so old messages never repeat on restart), and Kick.com WebSocket chat with platform badge indicators.
 - **🔊 Keybindable Chat Text-to-Speech (TTS)**:
@@ -114,9 +121,9 @@ StreamChatOverlay/
 │   ├── main.js                  # Electron lifecycle, DPAPI safeStorage, IPC router & global hotkeys
 │   ├── preload.js               # Context-isolated safe bridge (window.overlayAPI)
 │   ├── renderer/
-│   │   ├── index.html           # Transparent overlay DOM, settings drawer & alert banners
-│   │   ├── renderer.js          # Chat rendering, smart click-through hit-testing & audio/TTS
-│   │   └── styles.css           # Glassmorphism styling, themes & animations
+│   │   ├── index.html           # Transparent overlay DOM, poll widgets & settings drawer
+│   │   ├── renderer.js          # Chat rendering, poll engine, click-through hit-testing & audio/TTS
+│   │   └── styles.css           # Glassmorphism styling, themes, animations & poll card styles
 │   └── services/
 │       ├── alertServer.js       # Local HTTP/SSE server for OBS browser source & popup alerts
 │       ├── configStore.js       # DPAPI encrypted configuration store & path masking

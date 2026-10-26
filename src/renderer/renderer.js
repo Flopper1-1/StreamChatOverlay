@@ -97,6 +97,7 @@ const pillKick = document.getElementById('pillKick');
 const pillKickText = document.getElementById('pillKickText');
 const pillKickDot = document.getElementById('pillKickDot');
 
+const btnOpenPoll = document.getElementById('btnOpenPoll');
 const btnTtsToggle = document.getElementById('btnTtsToggle');
 const btnTestMsg = document.getElementById('btnTestMsg');
 const btnHideTop = document.getElementById('btnHideTop');
@@ -110,6 +111,20 @@ const followAlertMedia = document.getElementById('followAlertMedia');
 const followAlertPlatformTag = document.getElementById('followAlertPlatformTag');
 const followAlertUser = document.getElementById('followAlertUser');
 const followAlertSub = document.getElementById('followAlertSub');
+
+const chatViewport = document.getElementById('chatViewport');
+const pollOverlayWidget = document.getElementById('pollOverlayWidget');
+const pollWidgetBadge = document.getElementById('pollWidgetBadge');
+const pollWidgetQuestion = document.getElementById('pollWidgetQuestion');
+const pollWidgetTimer = document.getElementById('pollWidgetTimer');
+const btnOverlayEndPoll = document.getElementById('btnOverlayEndPoll');
+const btnOverlayDismissPoll = document.getElementById('btnOverlayDismissPoll');
+const pollWidgetWarning = document.getElementById('pollWidgetWarning');
+const pollWidgetOptions = document.getElementById('pollWidgetOptions');
+const pollWidgetInstruction = document.getElementById('pollWidgetInstruction');
+const pollWidgetTotalVotes = document.getElementById('pollWidgetTotalVotes');
+const pollWidgetProgressWrap = document.getElementById('pollWidgetProgressWrap');
+const pollWidgetProgressBar = document.getElementById('pollWidgetProgressBar');
 
 const emptyState = document.getElementById('emptyState');
 const emptyOverlayHotkeyHint = document.getElementById('emptyOverlayHotkeyHint');
@@ -251,6 +266,25 @@ const chkClickThroughWithTop = document.getElementById('chkClickThroughWithTop')
 
 const btnClearChat = document.getElementById('btnClearChat');
 const btnResetWindow = document.getElementById('btnResetWindow');
+
+// Live Chat Poll Builder inputs
+const pollBuilderStatusText = document.getElementById('pollBuilderStatusText');
+const btnSimulatePollVotes = document.getElementById('btnSimulatePollVotes');
+const pollCoverageWarning = document.getElementById('pollCoverageWarning');
+const pollCoverageWarningText = document.getElementById('pollCoverageWarningText');
+const inputPollQuestion = document.getElementById('inputPollQuestion');
+const valPollDurationSummary = document.getElementById('valPollDurationSummary');
+const chkPollIndefinite = document.getElementById('chkPollIndefinite');
+const pollDurationInputsRow = document.getElementById('pollDurationInputsRow');
+const inputPollDurationValue = document.getElementById('inputPollDurationValue');
+const selectPollDurationUnit = document.getElementById('selectPollDurationUnit');
+const pollPresetBtns = document.querySelectorAll('.poll-preset-btn');
+const valPollOptionCount = document.getElementById('valPollOptionCount');
+const pollBuilderOptionsList = document.getElementById('pollBuilderOptionsList');
+const btnAddPollOption = document.getElementById('btnAddPollOption');
+const btnStartPoll = document.getElementById('btnStartPoll');
+const btnEndPoll = document.getElementById('btnEndPoll');
+const btnClearPoll = document.getElementById('btnClearPoll');
 
 function showToast(text, durationMs = 2400) {
   if (!toastBanner) return;
@@ -793,6 +827,9 @@ function appendChatMessage(msg) {
   if (!msg) return;
   emptyState.classList.add('hidden');
 
+  // Process viewer vote if a live poll is currently active
+  processChatMessageForPoll(msg);
+
   const meta = getPlatformMeta(msg.platform);
   const isIconOnly = currentSettings.platformBadgeStyle === 'icon';
 
@@ -1021,6 +1058,19 @@ tabButtons.forEach((btn) => {
     openSettingsTab(btn.dataset.tab);
   });
 });
+
+if (btnOpenPoll) {
+  btnOpenPoll.addEventListener('click', () => {
+    const isModalOpen = !settingsModal.classList.contains('hidden');
+    const isPollTabActive = document.getElementById('tabPolls')?.classList.contains('active');
+    if (isModalOpen && isPollTabActive) {
+      settingsModal.classList.add('hidden');
+      btnSettings.classList.remove('active');
+    } else {
+      openSettingsTab('tabPolls');
+    }
+  });
+}
 
 if (btnTtsToggle) {
   btnTtsToggle.addEventListener('click', () => {
@@ -1753,6 +1803,504 @@ if (chkTtsReadAuthor) {
   });
 }
 
+// ============================================================================
+// Live Chat Poll Engine (Multi-Option, Anti-Duplicate Voter Set, Coverage Guard)
+// ============================================================================
+let pollBuilderOptions = ['Yes', 'No'];
+let activePoll = null;
+let pollTimerInterval = null;
+
+function formatPollRemainingTime(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function updatePollDurationSummary() {
+  if (!valPollDurationSummary) return;
+  if (chkPollIndefinite && chkPollIndefinite.checked) {
+    valPollDurationSummary.textContent = 'Indefinite (Manual End)';
+    if (pollDurationInputsRow) pollDurationInputsRow.classList.add('hidden');
+  } else {
+    if (pollDurationInputsRow) pollDurationInputsRow.classList.remove('hidden');
+    const rawVal = Math.max(1, parseInt(inputPollDurationValue?.value, 10) || 60);
+    const unit = selectPollDurationUnit?.value === 'minutes' ? 'Minutes' : 'Seconds';
+    valPollDurationSummary.textContent = `${rawVal} ${unit}`;
+  }
+}
+
+function evaluatePollChatCoverage(optionCount = pollBuilderOptions.length) {
+  const viewportHeight = (chatViewport && chatViewport.clientHeight) ? chatViewport.clientHeight : 440;
+  const estimatedPollHeight = 64 + optionCount * 29;
+  const coverageRatio = estimatedPollHeight / Math.max(180, viewportHeight);
+  const coveragePct = Math.min(99, Math.round(coverageRatio * 100));
+  const remainingChatPx = viewportHeight - estimatedPollHeight;
+  const coversTooMuch = optionCount >= 5 || coverageRatio > 0.42 || remainingChatPx < 145;
+
+  if (pollCoverageWarning && pollCoverageWarningText) {
+    if (coversTooMuch) {
+      pollCoverageWarningText.textContent =
+        `Warning: ${optionCount} poll options would take ~${coveragePct}% of your chat window! To prevent covering up the whole chat, the poll display is capped at 44% height (with scrolling). Consider removing options or making the overlay taller.`;
+      pollCoverageWarning.classList.remove('hidden');
+    } else {
+      pollCoverageWarning.classList.add('hidden');
+    }
+  }
+
+  if (pollWidgetWarning) {
+    const activeCount = activePoll ? activePoll.options.length : optionCount;
+    const activeEstHeight = 64 + activeCount * 29;
+    const activeRatio = activeEstHeight / Math.max(180, viewportHeight);
+    const activePct = Math.min(99, Math.round(activeRatio * 100));
+    const activeTooMuch = activeCount >= 5 || activeRatio > 0.42 || (viewportHeight - activeEstHeight) < 145;
+    if (activePoll && activeTooMuch) {
+      pollWidgetWarning.textContent = `⚠️ ${activeCount} options (~${activePct}% of chat) — Auto-scrolling so chat stays visible`;
+      pollWidgetWarning.classList.remove('hidden');
+    } else {
+      pollWidgetWarning.classList.add('hidden');
+    }
+  }
+
+  return { coversTooMuch, coveragePct, optionCount };
+}
+
+function renderPollBuilderOptions() {
+  if (!pollBuilderOptionsList) return;
+  pollBuilderOptionsList.replaceChildren();
+
+  pollBuilderOptions.forEach((optText, idx) => {
+    const row = document.createElement('div');
+    row.className = 'poll-builder-row';
+
+    const badge = document.createElement('span');
+    badge.className = 'poll-option-num-badge';
+    badge.textContent = `${idx + 1}`;
+    badge.title = `Viewers type "${idx + 1}" in chat to vote for this option`;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = optText;
+    input.placeholder = `Option ${idx + 1} (Viewers type ${idx + 1})`;
+    input.autocomplete = 'off';
+    input.addEventListener('input', () => {
+      pollBuilderOptions[idx] = input.value;
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'poll-remove-opt-btn';
+    removeBtn.textContent = '✕';
+    removeBtn.title = pollBuilderOptions.length <= 2
+      ? 'A poll requires at least 2 options'
+      : `Remove Option ${idx + 1}`;
+    removeBtn.disabled = pollBuilderOptions.length <= 2;
+    removeBtn.addEventListener('click', () => {
+      if (pollBuilderOptions.length <= 2) return;
+      pollBuilderOptions.splice(idx, 1);
+      renderPollBuilderOptions();
+    });
+
+    row.appendChild(badge);
+    row.appendChild(input);
+    row.appendChild(removeBtn);
+    pollBuilderOptionsList.appendChild(row);
+  });
+
+  if (valPollOptionCount) {
+    valPollOptionCount.textContent = `${pollBuilderOptions.length} Option${pollBuilderOptions.length === 1 ? '' : 's'}`;
+  }
+  evaluatePollChatCoverage(pollBuilderOptions.length);
+}
+
+function updatePollBuilderStatus() {
+  if (!pollBuilderStatusText) return;
+  if (!activePoll) {
+    pollBuilderStatusText.textContent =
+      'No active poll • Viewers vote by typing option number (1 vote per viewer)';
+    if (btnStartPoll) btnStartPoll.textContent = '🚀 Start Poll';
+    if (btnEndPoll) btnEndPoll.disabled = true;
+    if (btnClearPoll) btnClearPoll.disabled = true;
+    if (btnOpenPoll) btnOpenPoll.classList.remove('poll-active');
+    return;
+  }
+
+  if (activePoll.status === 'active') {
+    const modeLabel = activePoll.indefinite
+      ? 'Indefinite (End Manually)'
+      : formatPollRemainingTime(activePoll.endsAt - Date.now()) + ' left';
+    pollBuilderStatusText.textContent =
+      `🟢 Poll Live (${modeLabel}) • ${activePoll.totalVotes} vote${activePoll.totalVotes === 1 ? '' : 's'} cast`;
+    if (btnStartPoll) btnStartPoll.textContent = '🔄 Restart Poll';
+    if (btnEndPoll) btnEndPoll.disabled = false;
+    if (btnClearPoll) btnClearPoll.disabled = false;
+    if (btnOpenPoll) btnOpenPoll.classList.add('poll-active');
+  } else {
+    pollBuilderStatusText.textContent =
+      `🏁 Poll Ended • Final total: ${activePoll.totalVotes} vote${activePoll.totalVotes === 1 ? '' : 's'}`;
+    if (btnStartPoll) btnStartPoll.textContent = '🚀 Start New Poll';
+    if (btnEndPoll) btnEndPoll.disabled = true;
+    if (btnClearPoll) btnClearPoll.disabled = false;
+    if (btnOpenPoll) btnOpenPoll.classList.remove('poll-active');
+  }
+}
+
+function renderActivePollWidget() {
+  if (!pollOverlayWidget || !pollWidgetOptions) return;
+  if (!activePoll) {
+    pollOverlayWidget.classList.add('hidden');
+    updatePollBuilderStatus();
+    return;
+  }
+
+  pollOverlayWidget.classList.remove('hidden');
+  const isEnded = activePoll.status === 'ended';
+  pollOverlayWidget.classList.toggle('poll-ended', isEnded);
+
+  if (pollWidgetBadge) {
+    pollWidgetBadge.textContent = isEnded ? '🏁 POLL ENDED' : '📊 LIVE POLL';
+  }
+  if (pollWidgetQuestion) {
+    pollWidgetQuestion.textContent = activePoll.question || 'Chat Poll — Type a number to vote!';
+  }
+  if (btnOverlayEndPoll) {
+    btnOverlayEndPoll.classList.toggle('hidden', isEnded);
+  }
+  if (btnOverlayDismissPoll) {
+    btnOverlayDismissPoll.classList.toggle('hidden', !isEnded);
+  }
+
+  const total = activePoll.totalVotes || 0;
+  let maxVotes = 0;
+  for (const opt of activePoll.options) {
+    if (opt.votes > maxVotes) maxVotes = opt.votes;
+  }
+
+  pollWidgetOptions.replaceChildren();
+  activePoll.options.forEach((opt) => {
+    const pct = total > 0 ? Math.round((opt.votes / total) * 100) : 0;
+    const isTop = maxVotes > 0 && opt.votes === maxVotes;
+
+    const item = document.createElement('div');
+    item.className = `poll-option-item${isTop ? (isEnded ? ' winner' : ' leading') : ''}`;
+    item.dataset.optionNumber = String(opt.number);
+
+    const fill = document.createElement('div');
+    fill.className = 'poll-option-fill';
+    fill.style.width = `${pct}%`;
+
+    const left = document.createElement('div');
+    left.className = 'poll-option-left';
+
+    const keyBadge = document.createElement('span');
+    keyBadge.className = 'poll-option-key';
+    keyBadge.textContent = String(opt.number);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'poll-option-label';
+    labelSpan.textContent = `${isEnded && isTop ? '🏆 ' : ''}${opt.label}`;
+
+    left.appendChild(keyBadge);
+    left.appendChild(labelSpan);
+
+    const stats = document.createElement('span');
+    stats.className = 'poll-option-stats';
+    stats.textContent = `${opt.votes} (${pct}%)`;
+
+    item.appendChild(fill);
+    item.appendChild(left);
+    item.appendChild(stats);
+    pollWidgetOptions.appendChild(item);
+  });
+
+  if (pollWidgetInstruction) {
+    if (isEnded) {
+      if (maxVotes > 0) {
+        const winners = activePoll.options.filter((o) => o.votes === maxVotes).map((o) => `#${o.number} ${o.label}`);
+        pollWidgetInstruction.textContent = `Winner: ${winners.join(' & ')}`;
+      } else {
+        pollWidgetInstruction.textContent = 'Poll ended with no votes';
+      }
+    } else {
+      const maxNum = activePoll.options.length;
+      pollWidgetInstruction.innerHTML =
+        `Type <kbd>1</kbd>&ndash;<kbd>${maxNum}</kbd> in chat to vote (1 vote per viewer)`;
+    }
+  }
+
+  if (pollWidgetTotalVotes) {
+    pollWidgetTotalVotes.textContent = `${total} vote${total === 1 ? '' : 's'}`;
+  }
+
+  if (activePoll.indefinite || isEnded) {
+    if (pollWidgetProgressWrap) pollWidgetProgressWrap.classList.add('hidden');
+    if (pollWidgetTimer) {
+      pollWidgetTimer.textContent = isEnded ? 'Ended' : '♾️ Open';
+    }
+  } else {
+    if (pollWidgetProgressWrap) pollWidgetProgressWrap.classList.remove('hidden');
+  }
+
+  evaluatePollChatCoverage(activePoll.options.length);
+  updatePollBuilderStatus();
+}
+
+function stopPollTimer() {
+  if (pollTimerInterval) {
+    clearInterval(pollTimerInterval);
+    pollTimerInterval = null;
+  }
+}
+
+function endActivePoll(autoExpired = false) {
+  stopPollTimer();
+  if (!activePoll || activePoll.status === 'ended') return;
+  activePoll.status = 'ended';
+  renderActivePollWidget();
+  showToast(autoExpired ? '⏰ Poll timer finished!' : '🏁 Poll ended');
+}
+
+function clearActivePoll() {
+  stopPollTimer();
+  activePoll = null;
+  renderActivePollWidget();
+}
+
+function startPoll(customConfig = null) {
+  stopPollTimer();
+
+  const rawOptions = customConfig && Array.isArray(customConfig.options)
+    ? customConfig.options
+    : pollBuilderOptions;
+
+  const cleanedOptions = rawOptions
+    .map((o, i) => (typeof o === 'string' ? o.trim() : '') || `Option ${i + 1}`);
+
+  if (cleanedOptions.length < 2) {
+    showToast('Add at least 2 poll options first');
+    return null;
+  }
+
+  const question = customConfig && typeof customConfig.question === 'string'
+    ? customConfig.question.trim()
+    : (inputPollQuestion ? inputPollQuestion.value.trim() : '');
+
+  const isIndefinite = customConfig && typeof customConfig.indefinite === 'boolean'
+    ? customConfig.indefinite
+    : Boolean(chkPollIndefinite && chkPollIndefinite.checked);
+
+  let durationVal = customConfig && typeof customConfig.durationValue === 'number'
+    ? customConfig.durationValue
+    : Math.max(1, parseInt(inputPollDurationValue?.value, 10) || 60);
+
+  const unit = customConfig && customConfig.durationUnit
+    ? customConfig.durationUnit
+    : (selectPollDurationUnit?.value || 'seconds');
+
+  const durationMs = isIndefinite
+    ? 0
+    : (unit === 'minutes' ? durationVal * 60 * 1000 : durationVal * 1000);
+
+  const now = Date.now();
+  activePoll = {
+    id: `poll-${now}`,
+    question: question || 'Chat Poll — Type a number to vote!',
+    indefinite: isIndefinite,
+    durationMs,
+    startedAt: now,
+    endsAt: isIndefinite ? null : now + durationMs,
+    status: 'active',
+    totalVotes: 0,
+    voters: new Set(),
+    options: cleanedOptions.map((label, idx) => ({
+      number: idx + 1,
+      label,
+      votes: 0
+    }))
+  };
+
+  renderActivePollWidget();
+
+  if (!isIndefinite) {
+    const tick = () => {
+      if (!activePoll || activePoll.status !== 'active') {
+        stopPollTimer();
+        return;
+      }
+      const remaining = activePoll.endsAt - Date.now();
+      if (remaining <= 0) {
+        if (pollWidgetTimer) pollWidgetTimer.textContent = '00:00';
+        if (pollWidgetProgressBar) pollWidgetProgressBar.style.width = '0%';
+        endActivePoll(true);
+        return;
+      }
+      if (pollWidgetTimer) {
+        pollWidgetTimer.textContent = formatPollRemainingTime(remaining);
+      }
+      if (pollWidgetProgressBar && activePoll.durationMs > 0) {
+        const pct = Math.max(0, Math.min(100, (remaining / activePoll.durationMs) * 100));
+        pollWidgetProgressBar.style.width = `${pct}%`;
+      }
+      updatePollBuilderStatus();
+    };
+    tick();
+    pollTimerInterval = setInterval(tick, 200);
+  }
+
+  const coverageInfo = evaluatePollChatCoverage(activePoll.options.length);
+  if (coverageInfo.coversTooMuch) {
+    showToast(`⚠️ Poll started with ${activePoll.options.length} options (capped at 44% height so chat stays visible)`);
+  } else {
+    showToast(`📊 Poll started! Viewers can type 1-${activePoll.options.length} in chat`);
+  }
+
+  return activePoll;
+}
+
+function processChatMessageForPoll(msg) {
+  if (!activePoll || activePoll.status !== 'active' || !msg || msg.isEvent) {
+    return false;
+  }
+
+  const rawText = String(msg.text || '').trim();
+  const match = rawText.match(/^(?:!vote\s+|#)?(\d+)[.)!]?$/i);
+  if (!match) return false;
+
+  const choiceNum = parseInt(match[1], 10);
+  if (!choiceNum || choiceNum < 1 || choiceNum > activePoll.options.length) {
+    return false;
+  }
+
+  const authorNorm = String(msg.author || '').trim().toLowerCase();
+  if (!authorNorm) return false;
+  const platformNorm = String(msg.platform || 'chat').trim().toLowerCase();
+  const voterKey = `${platformNorm}:${authorNorm}`;
+
+  // Enforce 1 vote per viewer per poll
+  if (activePoll.voters.has(voterKey)) {
+    return false;
+  }
+
+  activePoll.voters.add(voterKey);
+  activePoll.options[choiceNum - 1].votes += 1;
+  activePoll.totalVotes += 1;
+
+  renderActivePollWidget();
+  return true;
+}
+
+// Wire up Poll Builder UI Events
+if (chkPollIndefinite) {
+  chkPollIndefinite.addEventListener('change', updatePollDurationSummary);
+}
+if (inputPollDurationValue) {
+  inputPollDurationValue.addEventListener('input', updatePollDurationSummary);
+}
+if (selectPollDurationUnit) {
+  selectPollDurationUnit.addEventListener('change', updatePollDurationSummary);
+}
+pollPresetBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (chkPollIndefinite) chkPollIndefinite.checked = false;
+    if (inputPollDurationValue && btn.dataset.val) {
+      inputPollDurationValue.value = btn.dataset.val;
+    }
+    if (selectPollDurationUnit && btn.dataset.unit) {
+      selectPollDurationUnit.value = btn.dataset.unit;
+    }
+    updatePollDurationSummary();
+  });
+});
+
+if (btnAddPollOption) {
+  btnAddPollOption.addEventListener('click', () => {
+    pollBuilderOptions.push(`Option ${pollBuilderOptions.length + 1}`);
+    renderPollBuilderOptions();
+  });
+}
+
+if (btnStartPoll) {
+  btnStartPoll.addEventListener('click', () => {
+    startPoll();
+  });
+}
+
+if (btnEndPoll) {
+  btnEndPoll.addEventListener('click', () => {
+    endActivePoll(false);
+  });
+}
+
+if (btnClearPoll) {
+  btnClearPoll.addEventListener('click', () => {
+    clearActivePoll();
+    showToast('Poll hidden from overlay');
+  });
+}
+
+if (btnOverlayEndPoll) {
+  btnOverlayEndPoll.addEventListener('click', (e) => {
+    e.stopPropagation();
+    endActivePoll(false);
+  });
+}
+
+if (btnOverlayDismissPoll) {
+  btnOverlayDismissPoll.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearActivePoll();
+  });
+}
+
+if (btnSimulatePollVotes) {
+  btnSimulatePollVotes.addEventListener('click', () => {
+    if (!activePoll || activePoll.status !== 'active') {
+      startPoll();
+    }
+    if (!activePoll) return;
+    const sampleVoters = [
+      { platform: 'twitch', author: 'PixelPro', color: '#a970ff' },
+      { platform: 'youtube', author: 'SarahStreams', color: '#ff4e45' },
+      { platform: 'kick', author: 'KickLegend', color: '#53fc18' },
+      { platform: 'twitch', author: 'NightOwl99', color: '#38bdf8' }
+    ];
+    sampleVoters.forEach((v, i) => {
+      const choice = (i % activePoll.options.length) + 1;
+      appendChatMessage({
+        id: `sim-vote-${Date.now()}-${i}`,
+        platform: v.platform,
+        author: v.author,
+        color: v.color,
+        badges: [],
+        text: String(choice),
+        segments: [{ type: 'text', text: String(choice) }],
+        timestamp: Date.now()
+      });
+    });
+    showToast('🧪 Simulated viewer votes in chat!');
+  });
+}
+
+window.addEventListener('resize', () => {
+  evaluatePollChatCoverage(activePoll ? activePoll.options.length : pollBuilderOptions.length);
+});
+
+renderPollBuilderOptions();
+updatePollDurationSummary();
+
+// Expose pollController for automated verification tests
+window.pollController = {
+  startPoll,
+  endActivePoll,
+  clearActivePoll,
+  evaluatePollChatCoverage,
+  getActivePoll: () => activePoll,
+  setBuilderOptions: (opts) => {
+    pollBuilderOptions = Array.isArray(opts) ? [...opts] : ['Yes', 'No'];
+    renderPollBuilderOptions();
+  }
+};
+
 btnClearChat.addEventListener('click', () => {
   chatList.innerHTML = '';
   emptyState.classList.remove('hidden');
@@ -1979,6 +2527,7 @@ let isResizingWindow = false;
     '#topBar',
     '#settingsModal',
     '#topRestoreBar',
+    '.poll-action-btn',
     '.msg-tts-btn',
     '.msg-delete-btn',
     '.restore-pill',
@@ -1991,6 +2540,7 @@ let isResizingWindow = false;
     '#topBar',
     '#settingsModal',
     '#topRestoreBar',
+    '.poll-action-btn',
     '.restore-pill',
     '.empty-actions button'
   ].join(', ');
